@@ -9,7 +9,7 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 from .api.airport import AirportProcessor
 from .api.event import Event, EventManager
 from .api.flight import FlightProcessor
-from .const import DEFAULT_NAME, DOMAIN, URL
+from .const import DEFAULT_NAME, DOMAIN, EVENT_FLIGHT_NOT_FOUND, URL
 
 _SCAN_OFF_MESSAGE = "FlightRadar24: API data fetching is OFF"
 
@@ -55,15 +55,30 @@ class FlightRadar24Coordinator(DataUpdateCoordinator[None]):
             return False
         return True
 
-    async def add_flight_track(self, number: str) -> None:
+    async def add_flight_track(self, number: str) -> bool:
+        """Return True if the flight was added, False otherwise.
+
+        Fires ``flightradar24_flight_not_found`` on the HA event bus when
+        the flight cannot be resolved, so automations (and the matching
+        service handler's ServiceValidationError) can surface it.
+        """
         if not self._is_scanning():
-            return
+            return False
         try:
             found = await self.hass.async_add_executor_job(self.flight.add_track, number)
-            if not found:
-                self.logger.error("FlightRadar24: Add Track - No flight found by - %s", number)
         except Exception as err:
             self.logger.error("FlightRadar24: %s", err)
+            self.hass.bus.async_fire(
+                EVENT_FLIGHT_NOT_FOUND, {"number": number, "reason": str(err)},
+            )
+            return False
+        if not found:
+            self.logger.error("FlightRadar24: Add Track - No flight found by - %s", number)
+            self.hass.bus.async_fire(
+                EVENT_FLIGHT_NOT_FOUND, {"number": number, "reason": "not_found"},
+            )
+            return False
+        return True
 
     async def remove_flight_track(self, number: str) -> None:
         if not self._is_scanning():

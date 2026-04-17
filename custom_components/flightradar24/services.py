@@ -67,7 +67,13 @@ def async_register_services(hass: HomeAssistant) -> None:
 
     async def _track_flight(call: ServiceCall) -> None:
         coordinator = _resolve_coordinator(hass, call)
-        await coordinator.add_flight_track(call.data[ATTR_NUMBER])
+        number = call.data[ATTR_NUMBER]
+        if not await coordinator.add_flight_track(number):
+            raise ServiceValidationError(
+                translation_domain=DOMAIN,
+                translation_key="flight_not_found",
+                translation_placeholders={"number": number},
+            )
 
     async def _untrack_flight(call: ServiceCall) -> None:
         coordinator = _resolve_coordinator(hass, call)

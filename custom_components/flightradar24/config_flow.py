@@ -62,21 +62,41 @@ _PASSWORD_SELECTOR = TextSelector(TextSelectorConfig(type=TextSelectorType.PASSW
 class FlightRadarConfigFlow(ConfigFlow, domain=DOMAIN):
 
     async def async_step_user(self, user_input: dict[str, Any] | None = None) -> FlowResult:
+        errors: dict[str, str] = {}
+
         if user_input is not None:
-            unique_id = (
-                f"{user_input[CONF_LATITUDE]}-"
-                f"{user_input[CONF_LONGITUDE]}-"
-                f"{user_input[CONF_RADIUS]}"
-            )
-            await self.async_set_unique_id(unique_id)
-            self._abort_if_unique_id_configured()
-            return self.async_create_entry(title=DEFAULT_NAME, data=user_input)
+            username = (user_input.get(CONF_USERNAME) or "").strip()
+            password = user_input.get(CONF_PASSWORD) or ""
+
+            if bool(username) != bool(password):
+                errors["base"] = "credentials_required"
+            elif username and password:
+                try:
+                    client = FlightRadar24API()
+                    await self.hass.async_add_executor_job(client.login, username, password)
+                except LoginError as err:
+                    _LOGGER.warning("FlightRadar24 setup login failed: %s", err)
+                    errors["base"] = "login_failed"
+
+            if not errors:
+                # Strip empty credential fields so they don't pollute the entry data.
+                data = {k: v for k, v in user_input.items() if v not in (None, "")}
+                unique_id = (
+                    f"{data[CONF_LATITUDE]}-"
+                    f"{data[CONF_LONGITUDE]}-"
+                    f"{data[CONF_RADIUS]}"
+                )
+                await self.async_set_unique_id(unique_id)
+                self._abort_if_unique_id_configured()
+                return self.async_create_entry(title=DEFAULT_NAME, data=data)
 
         schema = vol.Schema({
             vol.Required(CONF_RADIUS, default=1000): _RADIUS_SELECTOR,
             vol.Required(CONF_LATITUDE): cv.latitude,
             vol.Required(CONF_LONGITUDE): cv.longitude,
             vol.Required(CONF_SCAN_INTERVAL, default=10): _SCAN_INTERVAL_SELECTOR,
+            vol.Optional(CONF_USERNAME): _USERNAME_SELECTOR,
+            vol.Optional(CONF_PASSWORD): _PASSWORD_SELECTOR,
         })
         return self.async_show_form(
             step_id="user",
@@ -85,8 +105,10 @@ class FlightRadarConfigFlow(ConfigFlow, domain=DOMAIN):
                 {
                     CONF_LATITUDE: self.hass.config.latitude,
                     CONF_LONGITUDE: self.hass.config.longitude,
+                    **({CONF_USERNAME: user_input.get(CONF_USERNAME, "")} if user_input else {}),
                 },
             ),
+            errors=errors,
         )
 
     async def async_step_reauth(self, entry_data: dict[str, Any]) -> FlowResult:

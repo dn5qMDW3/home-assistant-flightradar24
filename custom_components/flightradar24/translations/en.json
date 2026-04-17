@@ -2,12 +2,14 @@
   "config": {
     "step": {
       "user": {
-        "description": "Fill in the location to track.",
+        "description": "Fill in the location to track. Username and password are optional — provide them only if you have a Flightradar24 account and want access to premium fields.",
         "data": {
           "radius": "Radius in meters",
           "latitude": "Latitude",
           "longitude": "Longitude",
-          "scan_interval": "Scan interval for updates in seconds"
+          "scan_interval": "Scan interval for updates in seconds",
+          "username": "OPTIONAL! Flightradar24 username",
+          "password": "OPTIONAL! Flightradar24 password"
         }
       },
       "reauth_confirm": {
@@ -48,6 +50,11 @@
     "error": {
       "credentials_required": "Both username and password are required when either is provided.",
       "login_failed": "Login to Flightradar24 failed. Check your credentials."
+    }
+  },
+  "exceptions": {
+    "flight_not_found": {
+      "message": "No flight found matching '{number}'. Check the flight number, callsign, or aircraft registration and try again."
     }
   },
   "services": {

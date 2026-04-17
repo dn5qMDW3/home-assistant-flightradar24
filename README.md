@@ -124,6 +124,26 @@ Three equivalent ways, pick whichever fits the context:
 3. **Dashboard entities** — the `text.*_add_to_track` and
    `text.*_remove_from_track` inputs still work for copy‑paste UX.
 
+When a flight can't be resolved, the integration surfaces it two ways:
+
+- Service calls (`flightradar24.track_flight`) raise `ServiceValidationError`
+  with a translated message — HA shows a red toast in the UI.
+- Both service calls and `text.*_add_to_track` fire
+  `flightradar24_flight_not_found` on the event bus, so you can route the
+  failure to any notification channel:
+
+  ```yaml
+  # Example: persistent notification when a flight isn't found
+  trigger:
+    - platform: event
+      event_type: flightradar24_flight_not_found
+  action:
+    - service: persistent_notification.create
+      data:
+        title: Flightradar24 — flight not found
+        message: "Could not track '{{ trigger.event.data.number }}'."
+  ```
+
 > [!TIP]
 > `search_flight` returns results as a **service response**, so you can
 > inspect matches interactively in Developer Tools before calling
@@ -192,6 +212,7 @@ platforms.
 | `flightradar24_tracked_landed` | A tracked flight lands |
 | `flightradar24_tracked_took_off` | A tracked flight takes off |
 | `flightradar24_most_tracked_new` | A new entry appears in FR24's top‑10 most tracked |
+| `flightradar24_flight_not_found` | A `track_flight` call (service or text entity) couldn't resolve the number / callsign / registration. Event data: `{number, reason}` |
 
 ### Sensors
 

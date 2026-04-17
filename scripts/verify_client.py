@@ -16,9 +16,10 @@ from pathlib import Path
 from typing import Callable
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(REPO_ROOT / "custom_components" / "flightradar24" / "api"))
+sys.path.insert(0, str(REPO_ROOT / "custom_components" / "flightradar24"))
 
-from client import (  # noqa: E402
+from api.airport import AirportProcessor  # noqa: E402
+from api.client import (  # noqa: E402
     AirportNotFoundError,
     Entity,
     Flight,
@@ -119,6 +120,36 @@ def main() -> int:
     run(s, "get_airport_details('ZZZ') raises AirportNotFoundError", _bad_airport)
     time.sleep(1)
 
+    # Exercise the full AirportProcessor pipeline — stats, yesterday, recent,
+    # weather, aircraft count, and ground schedule are all produced here.
+    def _airport_parsing() -> str:
+        processor = AirportProcessor(api)
+        processor.update_airport_info("LHR")
+
+        assert processor.stats is not None, "stats not populated"
+        assert isinstance(processor.arrivals, list), "arrivals not a list"
+        assert isinstance(processor.departures, list), "departures not a list"
+
+        stats = processor.stats
+        weather = processor.weather
+        count = processor.aircraft_count
+        ground = processor.ground
+
+        parts = [
+            f"today arrivals_on_time={stats.arrivals_on_time!r}",
+            f"yesterday={stats.arrivals_on_time_yesterday!r}",
+            f"recent={stats.arrivals_on_time_recent!r}",
+            f"weather.temp={weather.temperature if weather else None!r}",
+            f"aircraft_count.ground={count.ground if count else None!r}",
+            f"ground_schedule={len(ground) if ground is not None else None}",
+            f"arrivals={len(processor.arrivals)}",
+            f"departures={len(processor.departures)}",
+        ]
+        return "; ".join(parts)
+
+    run(s, "AirportProcessor full pipeline (LHR)", _airport_parsing)
+    time.sleep(1)
+
     def _search() -> str:
         results = api.search("BA117")
         counts = {k: len(v) for k, v in results.items()}
@@ -157,7 +188,6 @@ def main() -> int:
 
     run(s, "login with bad creds raises LoginError", _bad_login)
 
-    # Sanity: distance calc
     def _distance() -> str:
         d = Entity(52.5, 13.4).get_distance_from(Entity(40.6413, -73.7781))
         assert 6000 < d < 6800, f"distance {d} km is out of sane range for Berlin->JFK"
