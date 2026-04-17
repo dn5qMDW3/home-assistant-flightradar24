@@ -1,6 +1,6 @@
 from typing import Any
 from enum import Enum
-from FlightRadar24 import FlightRadar24API, Flight, Entity
+from .client import Entity, Flight, FlightRadar24API
 from .helper import to_int, get_value
 from .event import EventManager
 from ..const import (
@@ -326,6 +326,15 @@ class FlightProcessor:
             'time_real_arrival': get_value(flight, ['time', 'real', 'arrival']),
             'time_estimated_departure': get_value(flight, ['time', 'estimated', 'departure']),
             'time_estimated_arrival': get_value(flight, ['time', 'estimated', 'arrival']),
+            # Premium-only EMS / Mode-S data (populated when logged in, None otherwise).
+            'mach': get_value(flight, ['ems', 'mach']),
+            'indicated_airspeed': get_value(flight, ['ems', 'ias']),
+            'true_airspeed': get_value(flight, ['ems', 'tas']),
+            'outside_air_temperature': get_value(flight, ['ems', 'oat']),
+            'wind_direction': get_value(flight, ['ems', 'wind_dir']),
+            'wind_speed': get_value(flight, ['ems', 'wind_speed']),
+            'gps_altitude': get_value(flight, ['ems', 'agps']),
+            'selected_altitude': get_value(flight, ['ems', 'mcp']),
         }
 
     def _is_valid(self, flight: dict) -> bool:

@@ -1,22 +1,27 @@
-
----
 name: Validate with hassfest
 
 on:
   push:
+    branches:
+      - main
   pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   validate:
-    runs-on: "ubuntu-latest"
+    runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-        name: Download repo
+      - name: Checkout
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
-      - uses: actions/setup-python@v4
-        name: Setup Python
-        with:
-          python-version: '3.10.x'
-      - uses: "actions/checkout@v4"
-      - uses: home-assistant/actions/hassfest@master
+
+      # Home Assistant recommends pinning hassfest to @master.
+      - name: Run hassfest
+        uses: home-assistant/actions/hassfest@master

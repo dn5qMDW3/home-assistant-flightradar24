@@ -1,29 +1,30 @@
 from __future__ import annotations
 from logging import getLogger
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import Platform
-from homeassistant.core import HomeAssistant
-from .const import DOMAIN
-from .coordinator import FlightRadar24Coordinator
 from homeassistant.const import (
     CONF_LATITUDE,
     CONF_LONGITUDE,
+    CONF_PASSWORD,
     CONF_RADIUS,
     CONF_SCAN_INTERVAL,
-    CONF_PASSWORD,
     CONF_USERNAME,
+    Platform,
 )
+from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import ConfigEntryAuthFailed
+from .api.client import Entity, FlightRadar24API, LoginError
 from .const import (
-    CONF_MIN_ALTITUDE,
-    CONF_MAX_ALTITUDE,
-    CONF_MOST_TRACKED,
-    CONF_MOST_TRACKED_DEFAULT,
     CONF_ENABLE_TRACKER,
     CONF_ENABLE_TRACKER_DEFAULT,
-    MIN_ALTITUDE,
+    CONF_MAX_ALTITUDE,
+    CONF_MIN_ALTITUDE,
+    CONF_MOST_TRACKED,
+    CONF_MOST_TRACKED_DEFAULT,
     MAX_ALTITUDE,
+    MIN_ALTITUDE,
 )
-from FlightRadar24 import FlightRadar24API, Entity
+from .coordinator import FlightRadar24Coordinator
+from .services import async_register_services
 
 PLATFORMS: list[Platform] = [
     Platform.DEVICE_TRACKER,
@@ -33,20 +34,31 @@ PLATFORMS: list[Platform] = [
     Platform.BUTTON,
 ]
 
+FlightRadar24ConfigEntry = ConfigEntry[FlightRadar24Coordinator]
+
 _LOGGER = getLogger(__name__)
 
 
-async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    username = entry.data.get(CONF_USERNAME)
-    password = entry.data.get(CONF_PASSWORD)
-
-    client = FlightRadar24API()
-    if username and password:
+async def _async_login(
+        hass: HomeAssistant,
+        client: FlightRadar24API,
+        username: str | None,
+        password: str | None,
+) -> None:
+    if not (username and password):
+        return
+    try:
         await hass.async_add_executor_job(client.login, username, password)
+    except LoginError as err:
+        raise ConfigEntryAuthFailed(f"FlightRadar24 login failed: {err}") from err
+
+
+async def async_setup_entry(hass: HomeAssistant, entry: FlightRadar24ConfigEntry) -> bool:
+    client = FlightRadar24API()
+    await _async_login(hass, client, entry.data.get(CONF_USERNAME), entry.data.get(CONF_PASSWORD))
 
     latitude = entry.data[CONF_LATITUDE]
     longitude = entry.data[CONF_LONGITUDE]
-
     bounds = client.get_bounds_by_point(latitude, longitude, entry.data[CONF_RADIUS])
 
     coordinator = FlightRadar24Coordinator(
@@ -66,17 +78,18 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     coordinator.enable_tracker = entry.data.get(CONF_ENABLE_TRACKER, CONF_ENABLE_TRACKER_DEFAULT)
 
     await coordinator.async_config_entry_first_refresh()
-    hass.data.setdefault(DOMAIN, {})[entry.entry_id] = coordinator
+    entry.runtime_data = coordinator
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
-    entry.async_on_unload(entry.add_update_listener(update_listener))
+    entry.async_on_unload(entry.add_update_listener(_async_update_listener))
+    async_register_services(hass)
 
     return True
 
 
-async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+async def async_unload_entry(hass: HomeAssistant, entry: FlightRadar24ConfigEntry) -> bool:
     return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
 
 
-async def update_listener(hass: HomeAssistant, entry: ConfigEntry) -> None:
+async def _async_update_listener(hass: HomeAssistant, entry: FlightRadar24ConfigEntry) -> None:
     await hass.config_entries.async_reload(entry.entry_id)

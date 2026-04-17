@@ -1,5 +1,48 @@
-.idea
-venv
-.venv
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+build/
+dist/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+
+# Virtual environments
+venv/
+.venv/
+env/
+.python-version
+
+# Secrets / env files (scripts read FR24_USER / FR24_PASSWORD from here)
+.env
+.env.*
+!.env.example
+.envrc
+
+# Release artifact built by .github/workflows/release.yml
+flightradar24.zip
+
+# macOS
+.DS_Store
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Editors / IDEs
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Local dev files (kept from original repo)
 test.py
 example.json

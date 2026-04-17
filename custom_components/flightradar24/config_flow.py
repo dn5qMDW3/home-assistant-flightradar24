@@ -1,110 +1,195 @@
+from __future__ import annotations
 from logging import getLogger
-import voluptuous as vol
 from typing import Any
-from homeassistant.config_entries import (
-    ConfigEntry,
-    ConfigFlow,
-    OptionsFlowWithConfigEntry,
-    OptionsFlow,
-)
-from .const import (
-    DOMAIN,
-    DEFAULT_NAME,
-    CONF_MIN_ALTITUDE,
-    CONF_MAX_ALTITUDE,
-    CONF_MOST_TRACKED,
-    CONF_ENABLE_TRACKER,
-    CONF_MOST_TRACKED_DEFAULT,
-    CONF_ENABLE_TRACKER_DEFAULT,
-    MIN_ALTITUDE,
-    MAX_ALTITUDE,
-)
-from FlightRadar24 import FlightRadar24API
+import voluptuous as vol
+from .api.client import FlightRadar24API, LoginError
 import homeassistant.helpers.config_validation as cv
-from homeassistant.data_entry_flow import FlowResult
-from homeassistant.core import callback
+from homeassistant.config_entries import ConfigEntry, ConfigFlow, OptionsFlow
 from homeassistant.const import (
     CONF_LATITUDE,
     CONF_LONGITUDE,
+    CONF_PASSWORD,
     CONF_RADIUS,
     CONF_SCAN_INTERVAL,
-    CONF_PASSWORD,
     CONF_USERNAME,
+)
+from homeassistant.core import callback
+from homeassistant.data_entry_flow import FlowResult
+from homeassistant.helpers.selector import (
+    BooleanSelector,
+    NumberSelector,
+    NumberSelectorConfig,
+    NumberSelectorMode,
+    TextSelector,
+    TextSelectorConfig,
+    TextSelectorType,
+)
+from .const import (
+    CONF_ENABLE_TRACKER,
+    CONF_ENABLE_TRACKER_DEFAULT,
+    CONF_MAX_ALTITUDE,
+    CONF_MIN_ALTITUDE,
+    CONF_MOST_TRACKED,
+    CONF_MOST_TRACKED_DEFAULT,
+    DEFAULT_NAME,
+    DOMAIN,
+    MAX_ALTITUDE,
+    MIN_ALTITUDE,
 )
 
 _LOGGER = getLogger(__name__)
+
+_RADIUS_SELECTOR = NumberSelector(
+    NumberSelectorConfig(min=100, max=500000, step=100, unit_of_measurement="m", mode=NumberSelectorMode.BOX)
+)
+_SCAN_INTERVAL_SELECTOR = NumberSelector(
+    NumberSelectorConfig(min=1, max=3600, step=1, unit_of_measurement="s", mode=NumberSelectorMode.BOX)
+)
+_ALTITUDE_SELECTOR = NumberSelector(
+    NumberSelectorConfig(
+        min=MIN_ALTITUDE,
+        max=MAX_ALTITUDE,
+        step=1,
+        unit_of_measurement="ft",
+        mode=NumberSelectorMode.BOX,
+    )
+)
+_BOOL_SELECTOR = BooleanSelector()
+_USERNAME_SELECTOR = TextSelector(TextSelectorConfig(type=TextSelectorType.TEXT))
+_PASSWORD_SELECTOR = TextSelector(TextSelectorConfig(type=TextSelectorType.PASSWORD))
 
 
 class FlightRadarConfigFlow(ConfigFlow, domain=DOMAIN):
 
     async def async_step_user(self, user_input: dict[str, Any] | None = None) -> FlowResult:
         if user_input is not None:
+            unique_id = (
+                f"{user_input[CONF_LATITUDE]}-"
+                f"{user_input[CONF_LONGITUDE]}-"
+                f"{user_input[CONF_RADIUS]}"
+            )
+            await self.async_set_unique_id(unique_id)
+            self._abort_if_unique_id_configured()
             return self.async_create_entry(title=DEFAULT_NAME, data=user_input)
 
-        return self.async_show_form(step_id="user", data_schema=self.add_suggested_values_to_schema(
-            vol.Schema(
+        schema = vol.Schema({
+            vol.Required(CONF_RADIUS, default=1000): _RADIUS_SELECTOR,
+            vol.Required(CONF_LATITUDE): cv.latitude,
+            vol.Required(CONF_LONGITUDE): cv.longitude,
+            vol.Required(CONF_SCAN_INTERVAL, default=10): _SCAN_INTERVAL_SELECTOR,
+        })
+        return self.async_show_form(
+            step_id="user",
+            data_schema=self.add_suggested_values_to_schema(
+                schema,
                 {
-                    vol.Required(CONF_RADIUS, default=1000): vol.Coerce(float),
-                    vol.Required(CONF_LATITUDE): cv.latitude,
-                    vol.Required(CONF_LONGITUDE): cv.longitude,
-                    vol.Required(CONF_SCAN_INTERVAL, default=10): int,
-                }
+                    CONF_LATITUDE: self.hass.config.latitude,
+                    CONF_LONGITUDE: self.hass.config.longitude,
+                },
             ),
-            {
-                CONF_LATITUDE: self.hass.config.latitude,
-                CONF_LONGITUDE: self.hass.config.longitude,
-            },
         )
-                                    )
+
+    async def async_step_reauth(self, entry_data: dict[str, Any]) -> FlowResult:
+        """Triggered by HA when ConfigEntryAuthFailed is raised."""
+        return await self.async_step_reauth_confirm()
+
+    async def async_step_reauth_confirm(
+            self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        entry = self._get_reauth_entry()
+        errors: dict[str, str] = {}
+
+        if user_input is not None:
+            username = user_input.get(CONF_USERNAME, "").strip()
+            password = user_input.get(CONF_PASSWORD, "")
+            if not (username and password):
+                errors["base"] = "credentials_required"
+            else:
+                try:
+                    client = FlightRadar24API()
+                    await self.hass.async_add_executor_job(client.login, username, password)
+                except LoginError as err:
+                    _LOGGER.warning("FlightRadar24 reauth login failed: %s", err)
+                    errors["base"] = "login_failed"
+
+            if not errors:
+                self.hass.config_entries.async_update_entry(
+                    entry,
+                    data={**entry.data, CONF_USERNAME: username, CONF_PASSWORD: password},
+                )
+                await self.hass.config_entries.async_reload(entry.entry_id)
+                return self.async_abort(reason="reauth_successful")
+
+        schema = vol.Schema({
+            vol.Required(CONF_USERNAME, default=entry.data.get(CONF_USERNAME, "")): _USERNAME_SELECTOR,
+            vol.Required(CONF_PASSWORD): _PASSWORD_SELECTOR,
+        })
+        return self.async_show_form(
+            step_id="reauth_confirm",
+            data_schema=schema,
+            errors=errors,
+            description_placeholders={"username": entry.data.get(CONF_USERNAME, "")},
+        )
 
     @staticmethod
     @callback
     def async_get_options_flow(config_entry: ConfigEntry) -> OptionsFlow:
-        return FlightRadarOptionsFlow(config_entry)
+        return FlightRadarOptionsFlow()
 
 
-class FlightRadarOptionsFlow(OptionsFlowWithConfigEntry):
+class FlightRadarOptionsFlow(OptionsFlow):
 
     async def async_step_init(self, user_input: dict[str, Any] | None = None) -> FlowResult:
-        errors = {}
+        errors: dict[str, str] = {}
         data = user_input or self.config_entry.data
 
         if user_input is not None:
             username = data.get(CONF_USERNAME)
             password = data.get(CONF_PASSWORD)
 
-            try:
-                if username and password:
+            if bool(username) != bool(password):
+                errors["base"] = "credentials_required"
+            elif username and password:
+                try:
                     client = FlightRadar24API()
                     await self.hass.async_add_executor_job(client.login, username, password)
-                elif password and not username or username and not password:
-                    errors['base'] = 'You need to pass username and password'
-            except Exception as error:
-                _LOGGER.error('FlightRadar24 Integration Exception - {}'.format(error))
-                errors['base'] = str(error)
+                except Exception as error:
+                    _LOGGER.error("FlightRadar24 login failed: %s", error)
+                    errors["base"] = "login_failed"
 
             if not errors:
                 self.hass.config_entries.async_update_entry(self.config_entry, data=user_input)
                 return self.async_create_entry(title=DEFAULT_NAME, data=user_input)
 
         data_schema = vol.Schema({
-            vol.Required(CONF_RADIUS, default=data.get(CONF_RADIUS)): vol.Coerce(float),
+            vol.Required(CONF_RADIUS, default=data.get(CONF_RADIUS)): _RADIUS_SELECTOR,
             vol.Required(CONF_LATITUDE, default=data.get(CONF_LATITUDE)): cv.latitude,
             vol.Required(CONF_LONGITUDE, default=data.get(CONF_LONGITUDE)): cv.longitude,
-            vol.Required(CONF_SCAN_INTERVAL, default=data.get(CONF_SCAN_INTERVAL)): int,
-            vol.Optional(CONF_MIN_ALTITUDE,
-                         description={"suggested_value": data.get(CONF_MIN_ALTITUDE, MIN_ALTITUDE)}): int,
-            vol.Optional(CONF_MAX_ALTITUDE,
-                         description={"suggested_value": data.get(CONF_MAX_ALTITUDE, MAX_ALTITUDE)}): int,
-            vol.Optional(CONF_MOST_TRACKED,
-                         description={
-                             "suggested_value": data.get(CONF_MOST_TRACKED, CONF_MOST_TRACKED_DEFAULT)}): cv.boolean,
-            vol.Optional(CONF_ENABLE_TRACKER,
-                         description={
-                             "suggested_value": data.get(CONF_ENABLE_TRACKER,
-                                                         CONF_ENABLE_TRACKER_DEFAULT)}): cv.boolean,
-            vol.Optional(CONF_USERNAME, description={"suggested_value": data.get(CONF_USERNAME, '')}): cv.string,
-            vol.Optional(CONF_PASSWORD, description={"suggested_value": data.get(CONF_PASSWORD, '')}): cv.string,
+            vol.Required(CONF_SCAN_INTERVAL, default=data.get(CONF_SCAN_INTERVAL)): _SCAN_INTERVAL_SELECTOR,
+            vol.Optional(
+                CONF_MIN_ALTITUDE,
+                description={"suggested_value": data.get(CONF_MIN_ALTITUDE, MIN_ALTITUDE)},
+            ): _ALTITUDE_SELECTOR,
+            vol.Optional(
+                CONF_MAX_ALTITUDE,
+                description={"suggested_value": data.get(CONF_MAX_ALTITUDE, MAX_ALTITUDE)},
+            ): _ALTITUDE_SELECTOR,
+            vol.Optional(
+                CONF_MOST_TRACKED,
+                description={"suggested_value": data.get(CONF_MOST_TRACKED, CONF_MOST_TRACKED_DEFAULT)},
+            ): _BOOL_SELECTOR,
+            vol.Optional(
+                CONF_ENABLE_TRACKER,
+                description={"suggested_value": data.get(CONF_ENABLE_TRACKER, CONF_ENABLE_TRACKER_DEFAULT)},
+            ): _BOOL_SELECTOR,
+            vol.Optional(
+                CONF_USERNAME,
+                description={"suggested_value": data.get(CONF_USERNAME, "")},
+            ): _USERNAME_SELECTOR,
+            vol.Optional(
+                CONF_PASSWORD,
+                description={"suggested_value": data.get(CONF_PASSWORD, "")},
+            ): _PASSWORD_SELECTOR,
         })
 
         return self.async_show_form(step_id="init", data_schema=data_schema, errors=errors)

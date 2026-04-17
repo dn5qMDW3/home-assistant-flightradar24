@@ -1,0 +1,46 @@
+track_flight:
+  fields:
+    number:
+      required: true
+      example: "BA117"
+      selector:
+        text:
+    entry_id:
+      required: false
+      selector:
+        config_entry:
+          integration: flightradar24
+
+untrack_flight:
+  fields:
+    number:
+      required: true
+      example: "BA117"
+      selector:
+        text:
+    entry_id:
+      required: false
+      selector:
+        config_entry:
+          integration: flightradar24
+
+clear_tracked:
+  fields:
+    entry_id:
+      required: false
+      selector:
+        config_entry:
+          integration: flightradar24
+
+search_flight:
+  fields:
+    query:
+      required: true
+      example: "BA117"
+      selector:
+        text:
+    entry_id:
+      required: false
+      selector:
+        config_entry:
+          integration: flightradar24
