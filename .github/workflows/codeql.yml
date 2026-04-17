@@ -35,6 +35,9 @@ jobs:
         with:
           languages: python
           queries: security-and-quality
+          # Home Assistant custom integrations declare deps in manifest.json,
+          # not requirements.txt / pyproject.toml — skip the pip install step.
+          setup-python-dependencies: false
 
       - name: Perform CodeQL analysis
         uses: github/codeql-action/analyze@v3
