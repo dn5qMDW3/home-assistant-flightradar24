@@ -137,24 +137,35 @@ class FlightProcessor:
                 if current[obj.id].get('callsign'):
                     current_flights.append(current[obj.id].get('callsign'))
 
+        current_regs = {
+            v.get('aircraft_registration') for v in current.values() if v.get('aircraft_registration')
+        }
         remains = self._tracked.keys() - current.keys()
         if remains:
             for flight_id in remains:
-                flight_number = self._tracked[flight_id].get('flight_number')
+                entry = self._tracked[flight_id]
+                flight_number = entry.get('flight_number')
                 if flight_number and flight_number in current_flights:
                     continue
-                callsign = self._tracked[flight_id].get('callsign')
+                callsign = entry.get('callsign')
                 if not flight_number and callsign and callsign in current_flights:
                     continue
                 number = flight_number or callsign
                 if not number:
+                    # Registration-only placeholder (aircraft not currently airborne).
+                    # Preserve across ticks unless a live flight for this registration
+                    # is already in the current set.
+                    reg = entry.get('aircraft_registration')
+                    if reg and reg not in current_regs:
+                        current[flight_id] = entry
+                        current[flight_id]['tracked_type'] = 'not_airborne'
                     continue
                 size = current.__len__()
                 self._find_flight(current, number)
                 if size != current.__len__():
                     current_flights.append(number)
                 else:
-                    current[flight_id] = self._tracked[flight_id]
+                    current[flight_id] = entry
                     current[flight_id]['tracked_type'] = 'not_found'
 
         self._tracked = current
@@ -173,6 +184,11 @@ class FlightProcessor:
                     detail = element.get('detail')
                     if detail and search in (detail.get('callsign'), detail.get('flight')):
                         return element
+            aircraft = objects.get('aircraft')
+            if aircraft:
+                for element in aircraft:
+                    if element.get('id') == search:
+                        return element
             return None
 
         flights = self._client.search(number)
@@ -189,6 +205,19 @@ class FlightProcessor:
             flight.callsign = found['detail']['callsign']
 
             self._update_flights_data(flight, current, self._tracked)
+        elif found.get('type') == 'aircraft':
+            # Aircraft is known to FR24 but not currently flying and has no
+            # scheduled flight we can resolve. Add a registration-only
+            # placeholder; update_flights_tracked() will upgrade it to 'live'
+            # once the aircraft takes off.
+            current[found.get('id')] = {
+                'id': found.get('id'),
+                'callsign': None,
+                'flight_number': None,
+                'aircraft_registration': found.get('id'),
+                'tracked_type': 'not_airborne',
+            }
+            return
         else:
             current[found.get('id')] = {
                 'id': found.get('id'),
