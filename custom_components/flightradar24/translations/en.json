@@ -54,7 +54,7 @@
   },
   "exceptions": {
     "flight_not_found": {
-      "message": "No flight found matching '{number}'. Check the flight number, callsign, or aircraft registration and try again."
+      "message": "No flight found matching {number}. Check the flight number, callsign, or aircraft registration and try again."
     }
   },
   "services": {
