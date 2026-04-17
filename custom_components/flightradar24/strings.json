@@ -2,6 +2,7 @@
   "config": {
     "step": {
       "user": {
+        "description": "Fill in the location to track.",
         "data": {
           "radius": "[%key:common::config_flow::data::radius%]",
           "latitude": "[%key:common::config_flow::data::latitude%]",
@@ -29,6 +30,7 @@
   "options": {
     "step": {
       "init": {
+        "description": "Edit parameters for the location to track.",
         "data": {
           "radius": "[%key:common::config_flow::data::radius%]",
           "latitude": "[%key:common::config_flow::data::latitude%]",
@@ -37,6 +39,7 @@
           "min_altitude": "[%key:common::config_flow::data::min_altitude%]",
           "max_altitude": "[%key:common::config_flow::data::max_altitude%]",
           "most_tracked": "[%key:common::config_flow::data::most_tracked%]",
+          "enable_tracker": "Enable device_tracker for additional tracking flights",
           "username": "[%key:common::config_flow::data::username%]",
           "password": "[%key:common::config_flow::data::password%]"
         }
