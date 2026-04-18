@@ -86,6 +86,8 @@ class FlightRadar24Coordinator(DataUpdateCoordinator[None]):
             )
         except Exception as err:
             self.logger.error("FlightRadar24: %s", err)
+            if from_subentry:
+                self.flight.ensure_subentry_placeholder(number)
             self.hass.bus.async_fire(
                 EVENT_FLIGHT_NOT_FOUND, {"number": number, "reason": str(err)},
             )
