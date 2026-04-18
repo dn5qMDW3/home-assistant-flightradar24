@@ -14,8 +14,6 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed
 from .api.client import Entity, FlightRadar24API, LoginError
 from .const import (
-    CONF_ENABLE_TRACKER,
-    CONF_ENABLE_TRACKER_DEFAULT,
     CONF_MAX_ALTITUDE,
     CONF_MIN_ALTITUDE,
     CONF_MOST_TRACKED,
@@ -30,7 +28,6 @@ from .services import async_register_services
 
 PLATFORMS: list[Platform] = [
     Platform.BINARY_SENSOR,
-    Platform.BUTTON,
     Platform.DEVICE_TRACKER,
     Platform.SENSOR,
     Platform.SWITCH,
@@ -78,7 +75,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: FlightRadar24ConfigEntry
 
     if entry.data.get(CONF_MOST_TRACKED, CONF_MOST_TRACKED_DEFAULT):
         coordinator.flight.enable_most_tracked()
-    coordinator.enable_tracker = entry.data.get(CONF_ENABLE_TRACKER, CONF_ENABLE_TRACKER_DEFAULT)
 
     # Register airport subentries before the first refresh so their data is
     # fetched in the same executor burst as the primary airport.

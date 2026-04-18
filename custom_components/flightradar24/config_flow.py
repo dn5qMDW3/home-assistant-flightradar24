@@ -30,8 +30,6 @@ from homeassistant.helpers.selector import (
     TextSelectorType,
 )
 from .const import (
-    CONF_ENABLE_TRACKER,
-    CONF_ENABLE_TRACKER_DEFAULT,
     CONF_MAX_ALTITUDE,
     CONF_MIN_ALTITUDE,
     CONF_MOST_TRACKED,
@@ -45,6 +43,18 @@ from .const import (
 )
 
 _LOGGER = getLogger(__name__)
+
+
+async def _validate_login(hass, username: str, password: str) -> str | None:
+    """Attempt a FR24 login. Returns None on success or a strings.json error key."""
+    try:
+        client = FlightRadar24API()
+        await hass.async_add_executor_job(client.login, username, password)
+    except LoginError as err:
+        _LOGGER.warning("FlightRadar24 login failed: %s", err)
+        return "login_failed"
+    return None
+
 
 _RADIUS_SELECTOR = NumberSelector(
     NumberSelectorConfig(min=100, max=500000, step=100, unit_of_measurement="m", mode=NumberSelectorMode.BOX)
@@ -88,12 +98,8 @@ class FlightRadarConfigFlow(ConfigFlow, domain=DOMAIN):
             if bool(username) != bool(password):
                 errors["base"] = "credentials_required"
             elif username and password:
-                try:
-                    client = FlightRadar24API()
-                    await self.hass.async_add_executor_job(client.login, username, password)
-                except LoginError as err:
-                    _LOGGER.warning("FlightRadar24 setup login failed: %s", err)
-                    errors["base"] = "login_failed"
+                if err_key := await _validate_login(self.hass, username, password):
+                    errors["base"] = err_key
 
             if not errors:
                 # Strip empty credential fields so they don't pollute the entry data.
@@ -143,13 +149,8 @@ class FlightRadarConfigFlow(ConfigFlow, domain=DOMAIN):
             password = user_input.get(CONF_PASSWORD, "")
             if not (username and password):
                 errors["base"] = "credentials_required"
-            else:
-                try:
-                    client = FlightRadar24API()
-                    await self.hass.async_add_executor_job(client.login, username, password)
-                except LoginError as err:
-                    _LOGGER.warning("FlightRadar24 reauth login failed: %s", err)
-                    errors["base"] = "login_failed"
+            elif err_key := await _validate_login(self.hass, username, password):
+                errors["base"] = err_key
 
             if not errors:
                 self.hass.config_entries.async_update_entry(
@@ -189,12 +190,8 @@ class FlightRadarOptionsFlow(OptionsFlow):
             if bool(username) != bool(password):
                 errors["base"] = "credentials_required"
             elif username and password:
-                try:
-                    client = FlightRadar24API()
-                    await self.hass.async_add_executor_job(client.login, username, password)
-                except Exception as error:
-                    _LOGGER.error("FlightRadar24 login failed: %s", error)
-                    errors["base"] = "login_failed"
+                if err_key := await _validate_login(self.hass, username, password):
+                    errors["base"] = err_key
 
             if not errors:
                 self.hass.config_entries.async_update_entry(self.config_entry, data=user_input)
@@ -216,10 +213,6 @@ class FlightRadarOptionsFlow(OptionsFlow):
             vol.Optional(
                 CONF_MOST_TRACKED,
                 description={"suggested_value": data.get(CONF_MOST_TRACKED, CONF_MOST_TRACKED_DEFAULT)},
-            ): _BOOL_SELECTOR,
-            vol.Optional(
-                CONF_ENABLE_TRACKER,
-                description={"suggested_value": data.get(CONF_ENABLE_TRACKER, CONF_ENABLE_TRACKER_DEFAULT)},
             ): _BOOL_SELECTOR,
             vol.Optional(
                 CONF_USERNAME,

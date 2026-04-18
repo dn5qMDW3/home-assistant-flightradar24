@@ -41,7 +41,6 @@
           "min_altitude": "The minimum altitude in feet above which all aircraft will be tracked.",
           "max_altitude": "The maximum altitude in feet below which all aircraft will be tracked.",
           "most_tracked": "Enable most tracked flights list",
-          "enable_tracker": "Enable device_tracker for additional tracking flights",
           "username": "OPTIONAL! Flightradar24 username",
           "password": "OPTIONAL! Flightradar24 password"
         }
@@ -204,9 +203,6 @@
       "aircraft_in_area": { "name": "Aircraft in area" },
       "tracked_flight_airborne": { "name": "Tracked flight airborne" },
       "airport_tracked": { "name": "Airport tracked" }
-    },
-    "button": {
-      "tracked_clear": { "name": "Clear additional tracked" }
     },
     "weather": {
       "airport_weather": { "name": "Airport weather" }

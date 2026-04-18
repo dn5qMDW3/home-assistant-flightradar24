@@ -34,7 +34,6 @@ async def async_get_config_entry_diagnostics(
         "entry": async_redact_data(entry.as_dict(), _REDACT),
         "coordinator": {
             "scanning": coordinator.scanning,
-            "enable_tracker": coordinator.enable_tracker,
             "last_update_success": coordinator.last_update_success,
             "update_interval_seconds": (
                 coordinator.update_interval.total_seconds() if coordinator.update_interval else None

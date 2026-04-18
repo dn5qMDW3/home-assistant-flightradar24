@@ -339,11 +339,11 @@ model, airline, and time-on-ground fields (`on_ground_since`,
 | Entity | Purpose |
 |---|---|
 | `switch.*_api_data_fetching` | Pause all upstream calls |
-| `button.*_clear_additional_tracked` | Clear ephemeral tracked flights; subentry aircraft are preserved |
 | `device_tracker.flightradar24` | Optional tracker entity for one tracked flight |
 
-Flight add/remove is handled by the `flightradar24.track_flight` /
-`flightradar24.untrack_flight` services (see the Tracking section above).
+Flight add/remove and bulk-clear are handled entirely by the
+`flightradar24.track_flight` / `untrack_flight` / `clear_tracked`
+services (see the Tracking section above).
 
 ### Per-aircraft-subentry entities
 

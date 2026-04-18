@@ -1,5 +1,4 @@
 from __future__ import annotations
-import copy
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
@@ -12,13 +11,12 @@ from homeassistant.components.sensor import (
 )
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
-from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.util import dt as dt_util
 from .api.airport import AirportState
-from .const import DEFAULT_NAME, DOMAIN, SUBENTRY_AIRCRAFT, SUBENTRY_AIRPORT
+from .const import SUBENTRY_AIRCRAFT, SUBENTRY_AIRPORT
 from .coordinator import FlightRadar24Coordinator
-from .entity import FlightRadar24Entity
+from .entity import FlightRadar24Entity, subentry_device_info
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -278,9 +276,12 @@ class FlightRadar24Sensor(FlightRadar24Entity, SensorEntity):
         if self.entity_description.attributes is not None:
             attrs = self.entity_description.attributes(self.coordinator)
             if attrs is not None:
-                new_attributes = copy.deepcopy(attrs)
-                new_attributes["last_updated"] = dt_util.utcnow().isoformat()
-                self._attr_extra_state_attributes = new_attributes
+                # Shallow copy is enough — we only add a top-level key. The
+                # inner flight dicts are freshly rebuilt each coordinator tick
+                # so sharing references with the source is safe.
+                self._attr_extra_state_attributes = {
+                    **attrs, "last_updated": dt_util.utcnow().isoformat(),
+                }
         self.async_write_ha_state()
 
     @property
@@ -322,12 +323,7 @@ class FlightRadar24AirportSubentrySensor(FlightRadar24Entity, SensorEntity):
         super().__init__(coordinator, f"{airport_code}_{description.key}")
         self.entity_description = description
         self._airport_code = airport_code.upper()
-        self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, f"{coordinator.unique_id}_airport_{self._airport_code}")},
-            name=f"{DEFAULT_NAME} {self._airport_code}",
-            manufacturer=DEFAULT_NAME,
-            via_device=(DOMAIN, coordinator.unique_id),
-        )
+        self._attr_device_info = subentry_device_info(coordinator, "airport", self._airport_code)
 
     def _state(self) -> AirportState | None:
         return self.coordinator.airport.subentry_airports.get(self._airport_code)
@@ -344,9 +340,12 @@ class FlightRadar24AirportSubentrySensor(FlightRadar24Entity, SensorEntity):
         if self.entity_description.attributes is not None:
             attrs = self.entity_description.attributes(state)
             if attrs is not None:
-                new_attributes = copy.deepcopy(attrs)
-                new_attributes["last_updated"] = dt_util.utcnow().isoformat()
-                self._attr_extra_state_attributes = new_attributes
+                # Shallow copy is enough — we only add a top-level key. The
+                # inner flight dicts are freshly rebuilt each coordinator tick
+                # so sharing references with the source is safe.
+                self._attr_extra_state_attributes = {
+                    **attrs, "last_updated": dt_util.utcnow().isoformat(),
+                }
         self.async_write_ha_state()
 
     @property
@@ -372,31 +371,13 @@ class FlightRadar24AircraftSubentrySensor(FlightRadar24Entity, SensorEntity):
     ) -> None:
         super().__init__(coordinator, f"aircraft_{registration}")
         self._registration = registration.upper()
-        self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, f"{coordinator.unique_id}_aircraft_{self._registration}")},
-            name=f"{DEFAULT_NAME} {self._registration}",
-            manufacturer=DEFAULT_NAME,
-            via_device=(DOMAIN, coordinator.unique_id),
-        )
+        self._attr_device_info = subentry_device_info(coordinator, "aircraft", self._registration)
 
-    def _flight(self) -> dict[str, Any] | None:
-        for entry in self.coordinator.flight.tracked.values():
-            if (entry.get("aircraft_registration") or "").upper() == self._registration:
-                return entry
-        return None
-
-    @property
-    def native_value(self) -> str:
-        flight = self._flight()
-        return flight.get("tracked_type") or "unknown" if flight else "unknown"
-
-    @property
-    def extra_state_attributes(self) -> dict[str, Any]:
-        return self._flight() or {}
-
-    @property
-    def icon(self) -> str:
-        flight = self._flight()
-        if flight and flight.get("tracked_type") == "live":
-            return "mdi:airplane"
-        return "mdi:airplane-off"
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        flight = self.coordinator.flight_by_registration(self._registration)
+        tracked_type = (flight.get("tracked_type") if flight else None) or "unknown"
+        self._attr_native_value = tracked_type
+        self._attr_extra_state_attributes = flight or {}
+        self._attr_icon = "mdi:airplane" if tracked_type == "live" else "mdi:airplane-off"
+        self.async_write_ha_state()

@@ -41,7 +41,6 @@
           "min_altitude": "[%key:common::config_flow::data::min_altitude%]",
           "max_altitude": "[%key:common::config_flow::data::max_altitude%]",
           "most_tracked": "[%key:common::config_flow::data::most_tracked%]",
-          "enable_tracker": "Enable device_tracker for additional tracking flights",
           "username": "[%key:common::config_flow::data::username%]",
           "password": "[%key:common::config_flow::data::password%]"
         }
@@ -204,9 +203,6 @@
       "aircraft_in_area": { "name": "Aircraft in area" },
       "tracked_flight_airborne": { "name": "Tracked flight airborne" },
       "airport_tracked": { "name": "Airport tracked" }
-    },
-    "button": {
-      "tracked_clear": { "name": "Clear additional tracked" }
     },
     "weather": {
       "airport_weather": { "name": "Airport weather" }

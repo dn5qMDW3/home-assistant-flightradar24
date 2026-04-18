@@ -18,11 +18,10 @@ from homeassistant.const import (
     UnitOfTemperature,
 )
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from .const import DEFAULT_NAME, DOMAIN, SUBENTRY_AIRPORT
+from .const import SUBENTRY_AIRPORT
 from .coordinator import FlightRadar24Coordinator
-from .entity import FlightRadar24Entity
+from .entity import FlightRadar24Entity, subentry_device_info
 
 _CONDITION_MAP: dict[str, str] = {
     "clear": ATTR_CONDITION_SUNNY,
@@ -78,12 +77,7 @@ class FlightRadar24AirportWeather(FlightRadar24Entity, WeatherEntity):
     ) -> None:
         super().__init__(coordinator, f"{airport_code}_weather")
         self._airport_code = airport_code.upper()
-        self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, f"{coordinator.unique_id}_airport_{self._airport_code}")},
-            name=f"{DEFAULT_NAME} {self._airport_code}",
-            manufacturer=DEFAULT_NAME,
-            via_device=(DOMAIN, coordinator.unique_id),
-        )
+        self._attr_device_info = subentry_device_info(coordinator, "airport", self._airport_code)
 
     def _weather(self):
         state = self.coordinator.airport.subentry_airports.get(self._airport_code)

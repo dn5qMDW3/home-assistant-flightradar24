@@ -5,9 +5,7 @@ URL = 'https://www.flightradar24.com/'
 CONF_MIN_ALTITUDE = "min_altitude"
 CONF_MAX_ALTITUDE = "max_altitude"
 CONF_MOST_TRACKED = "most_tracked"
-CONF_ENABLE_TRACKER = "enable_tracker"
 CONF_MOST_TRACKED_DEFAULT = True
-CONF_ENABLE_TRACKER_DEFAULT = False
 
 EVENT_FLIGHT_NOT_FOUND = f"{DOMAIN}_flight_not_found"
 

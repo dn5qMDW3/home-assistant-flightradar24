@@ -278,11 +278,9 @@ class FlightProcessor:
             data[1] = get_value(found, ['detail', 'lat'])
             data[2] = get_value(found, ['detail', 'lon'])
             data[13] = []
-            flight = Flight(found.get('id'), data)
-            flight.registration = found['detail']['reg']
-            flight.callsign = found['detail']['callsign']
-
-            self._update_flights_data(flight, current, self._tracked)
+            # Note: reg/callsign from ``found['detail']`` are re-fetched via
+            # get_flight_details downstream; no need to set them on the Flight obj.
+            self._update_flights_data(Flight(found.get('id'), data), current, self._tracked)
         elif found.get('type') == 'aircraft':
             # Aircraft is known to FR24 but not currently flying and has no
             # scheduled flight we can resolve. Add a registration-only

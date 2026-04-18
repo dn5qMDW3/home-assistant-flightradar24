@@ -2,6 +2,7 @@ from __future__ import annotations
 import asyncio
 from datetime import timedelta
 from logging import Logger
+from typing import Any
 from .api.client import Entity, FlightRadar24API
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.device_registry import DeviceInfo
@@ -33,7 +34,6 @@ class FlightRadar24Coordinator(DataUpdateCoordinator[None]):
         self.event_manager = EventManager()
         self.flight = FlightProcessor(client, self.event_manager, min_altitude, max_altitude, point, bounds)
         self.airport = AirportProcessor(client)
-        self.enable_tracker: bool = False
         self.scanning: bool = True
         self.device_info = DeviceInfo(
             configuration_url=URL,
@@ -54,6 +54,19 @@ class FlightRadar24Coordinator(DataUpdateCoordinator[None]):
             self.logger.error(_SCAN_OFF_MESSAGE)
             return False
         return True
+
+    def flight_by_registration(self, registration: str) -> dict[str, Any] | None:
+        """Return the tracked flight entry matching an aircraft registration."""
+        target = registration.upper()
+        for entry in self.flight.tracked.values():
+            if (entry.get("aircraft_registration") or "").upper() == target:
+                return entry
+        return None
+
+    def airborne_flight_by_registration(self, registration: str) -> dict[str, Any] | None:
+        """Same as ``flight_by_registration`` but only returns the entry if live."""
+        entry = self.flight_by_registration(registration)
+        return entry if entry and entry.get("tracked_type") == "live" else None
 
     async def add_flight_track(self, number: str, *, from_subentry: bool = False) -> bool:
         """Return True if the flight was added, False otherwise.
