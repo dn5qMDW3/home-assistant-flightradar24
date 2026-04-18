@@ -403,6 +403,8 @@ class FlightProcessor:
             sensor_type: FlightType | None = None,
     ) -> None:
         previous = tracked.get(obj.id) if tracked else None
+        if previous is None and tracked and obj.registration:
+            previous = tracked.get(obj.registration)
         last_on_ground = previous.get('on_ground') if previous else None
 
         if previous and self._is_valid(previous) and to_int(last_on_ground) == obj.on_ground:
@@ -412,6 +414,9 @@ class FlightProcessor:
 
         if flight is None:
             return
+
+        if previous and previous.get("from_subentry"):
+            flight["from_subentry"] = True
 
         distance = obj.get_distance_from(self._point)
         flight.update({

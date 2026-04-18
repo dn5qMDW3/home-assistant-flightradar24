@@ -239,6 +239,30 @@ class TestSubentryPlaceholder:
         assert live["latitude"] == 30.93
         assert live["longitude"] == 38.45
 
+    def test_from_subentry_preserved_when_refetched(self, processor):
+        # Seed an entry as a from_subentry track via empty search.
+        processor._client.search.return_value = {
+            "live": [], "schedule": [], "aircraft": [],
+        }
+        processor.add_track("58-0052", from_subentry=True)
+        # Force a refresh that hits the re-fetch branch (different on_ground
+        # than the placeholder default). The new live entry must still carry
+        # from_subentry=True so the coordinator's cleanup logic can later
+        # identify it as subentry-tracked.
+        info = [None] * 20
+        info[1] = 30.93
+        info[2] = 38.45
+        info[9] = "58-0052"
+        info[14] = 0
+        processor._client.get_flights.return_value = [Flight("3f493f60", info)]
+        processor._client.get_flight_details.return_value = {
+            "identification": {"id": "3f493f60"},
+            "aircraft": {"registration": "58-0052"},
+        }
+        processor.update_flights_tracked()
+        assert "3f493f60" in processor.tracked
+        assert processor.tracked["3f493f60"].get("from_subentry") is True
+
 
 class TestAircraftExists:
     @pytest.fixture
