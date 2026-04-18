@@ -1,30 +1,30 @@
 from typing import Any
 
 
-def to_int(element: Any) -> None | int:
+def to_int(element: Any) -> int | None:
     if element is None:
         return None
     try:
         return int(element)
-    except ValueError:
+    except (TypeError, ValueError):
         return None
 
 
-def to_float(element: Any) -> None | float:
+def to_float(element: Any) -> float | None:
     if element is None:
         return None
     try:
         return float(element)
-    except ValueError:
+    except (TypeError, ValueError):
         return None
 
 
-def get_value(dictionary: dict, keys: list) -> Any | None:
-    nested_dict = dictionary
-
+def get_value(dictionary: Any, keys: list) -> Any | None:
+    """Walk a nested path into ``dictionary``; return None if any hop misses."""
+    nested = dictionary
     for key in keys:
         try:
-            nested_dict = nested_dict[key]
-        except Exception:
+            nested = nested[key]
+        except (KeyError, IndexError, TypeError):
             return None
-    return nested_dict
+    return nested

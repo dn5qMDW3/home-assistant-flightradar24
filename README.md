@@ -100,9 +100,11 @@ extra premium fields (see [Premium login](#premium-login)).
 2. Fill in radius (m), latitude, longitude, and scan interval (s).
 3. Submit.
 
-After adding the entry you can edit altitude bounds, toggle most-tracked
-and per-flight device_tracker, and enter a Flightradar24 username/password
-under the entry's **Configure** button.
+After adding the entry you can edit altitude bounds, toggle most-tracked,
+and enter a Flightradar24 username/password under the entry's
+**Configure** button. Airport and aircraft tracking are added afterwards
+via the **Add airport** / **Add aircraft** subentry buttons on the
+integration card.
 
 ## Tracking flights, airports, and aircraft
 
@@ -217,10 +219,10 @@ flowchart LR
     subgraph Platforms
         direction LR
         S[sensor]
+        BS[binary_sensor]
+        W[weather]
         DT[device_tracker]
         SW[switch]
-        BTN[button]
-        TXT[text]
     end
 
     CE --> DUC
@@ -334,16 +336,16 @@ model, airline, and time-on-ground fields (`on_ground_since`,
 `on_ground_hours`, `on_ground_seconds`).
 </details>
 
-### Configuration entities
+### Configuration entity
 
 | Entity | Purpose |
 |---|---|
-| `switch.*_api_data_fetching` | Pause all upstream calls |
-| `device_tracker.flightradar24` | Optional tracker entity for one tracked flight |
+| `switch.*_api_data_fetching` | Pause all upstream polling |
 
-Flight add/remove and bulk-clear are handled entirely by the
-`flightradar24.track_flight` / `untrack_flight` / `clear_tracked`
-services (see the Tracking section above).
+Adding / removing airports and aircraft happens via config subentries
+(the **+ Add airport** / **+ Add aircraft** buttons on the integration
+card, or the matching services). Ephemeral flight tracking is done via
+`flightradar24.track_flight` / `untrack_flight` / `clear_tracked`.
 
 ### Per-aircraft-subentry entities
 

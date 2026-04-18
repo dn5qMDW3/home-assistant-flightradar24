@@ -159,51 +159,52 @@ class AirportProcessor:
         return count
 
     @staticmethod
-    def _parse_ground(data: list | None) -> list[dict[str, Any]] | None:
+    def _base_flight_dict(flight: dict | None) -> dict[str, Any]:
+        """Fields shared by both schedule and ground-schedule flight rows."""
+        return {
+            "flight_id": get_value(flight, ["identification", "id"]),
+            "flight_number": get_value(flight, ["identification", "number", "default"]),
+            "callsign": get_value(flight, ["identification", "callsign"]),
+            "aircraft_code": get_value(flight, ["aircraft", "model", "code"]),
+            "aircraft_model": get_value(flight, ["aircraft", "model", "text"]),
+            "aircraft_registration": get_value(flight, ["aircraft", "registration"]),
+            "airline": get_value(flight, ["airline", "name"]),
+            "airline_short": get_value(flight, ["airline", "short"]),
+            "airline_iata": get_value(flight, ["airline", "code", "iata"]),
+            "airline_icao": get_value(flight, ["airline", "code", "icao"]),
+        }
+
+    @classmethod
+    def _parse_ground(cls, data: list | None) -> list[dict[str, Any]] | None:
         if data is None:
             return None
         flights: list[dict[str, Any]] = []
-        for item in (data or [])[:50]:
-            item = get_value(item, ["flight"])
-            flights.append({
-                "flight_id": get_value(item, ["identification", "id"]),
-                "flight_number": get_value(item, ["identification", "number", "default"]),
-                "callsign": get_value(item, ["identification", "callsign"]),
-                "aircraft_code": get_value(item, ["aircraft", "model", "code"]),
-                "aircraft_model": get_value(item, ["aircraft", "model", "text"]),
-                "aircraft_registration": get_value(item, ["aircraft", "registration"]),
-                "aircraft_hex": get_value(item, ["aircraft", "hex"]),
-                "aircraft_country_code": get_value(item, ["aircraft", "country", "code"]),
-                "airline": get_value(item, ["airline", "name"]),
-                "airline_short": get_value(item, ["airline", "short"]),
-                "airline_iata": get_value(item, ["airline", "code", "iata"]),
-                "airline_icao": get_value(item, ["airline", "code", "icao"]),
-                "owner": get_value(item, ["owner", "name"]),
-                "on_ground_since": to_int(get_value(item, ["aircraft", "onGroundUpdate"])),
-                "on_ground_hours": to_float(get_value(item, ["aircraft", "hoursDiff"])),
-                "on_ground_seconds": to_int(get_value(item, ["aircraft", "timeDiff"])),
+        for item in data[:50]:
+            flight = get_value(item, ["flight"])
+            entry = cls._base_flight_dict(flight)
+            entry.update({
+                "aircraft_hex": get_value(flight, ["aircraft", "hex"]),
+                "aircraft_country_code": get_value(flight, ["aircraft", "country", "code"]),
+                "owner": get_value(flight, ["owner", "name"]),
+                "on_ground_since": to_int(get_value(flight, ["aircraft", "onGroundUpdate"])),
+                "on_ground_hours": to_float(get_value(flight, ["aircraft", "hoursDiff"])),
+                "on_ground_seconds": to_int(get_value(flight, ["aircraft", "timeDiff"])),
             })
+            flights.append(entry)
         return flights
 
-    @staticmethod
-    def _parse_schedule(schedule: ScheduleType, data: list | None) -> list[dict[str, Any]]:
+    @classmethod
+    def _parse_schedule(cls, schedule: ScheduleType, data: list | None) -> list[dict[str, Any]]:
         if not data:
             return []
         airport = "origin" if schedule == ScheduleType.ARRIVAL else "destination"
-        return [
-            {
+        flights: list[dict[str, Any]] = []
+        for item in data[:50]:
+            flight = get_value(item, ["flight"])
+            entry = cls._base_flight_dict(flight)
+            entry.update({
                 "status_text": get_value(flight, ["status", "text"]),
                 "status": get_value(flight, ["status", "generic", "status", "text"]),
-                "flight_id": get_value(flight, ["identification", "id"]),
-                "flight_number": get_value(flight, ["identification", "number", "default"]),
-                "callsign": get_value(flight, ["identification", "callsign"]),
-                "aircraft_code": get_value(flight, ["aircraft", "model", "code"]),
-                "aircraft_model": get_value(flight, ["aircraft", "model", "text"]),
-                "aircraft_registration": get_value(flight, ["aircraft", "registration"]),
-                "airline": get_value(flight, ["airline", "name"]),
-                "airline_short": get_value(flight, ["airline", "short"]),
-                "airline_iata": get_value(flight, ["airline", "code", "iata"]),
-                "airline_icao": get_value(flight, ["airline", "code", "icao"]),
                 "airport_name": get_value(flight, ["airport", airport, "name"]),
                 "airport_code_iata": get_value(flight, ["airport", airport, "code", "iata"]),
                 "airport_code_icao": get_value(flight, ["airport", airport, "code", "icao"]),
@@ -216,7 +217,6 @@ class AirportProcessor:
                 "time_real_arrival": get_value(flight, ["time", "real", "arrival"]),
                 "time_estimated_departure": get_value(flight, ["time", "estimated", "departure"]),
                 "time_estimated_arrival": get_value(flight, ["time", "estimated", "arrival"]),
-            }
-            for item in data[:50]
-            for flight in [get_value(item, ["flight"])]
-        ]
+            })
+            flights.append(entry)
+        return flights
