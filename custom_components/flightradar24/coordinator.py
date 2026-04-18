@@ -100,6 +100,15 @@ class FlightRadar24Coordinator(DataUpdateCoordinator[None]):
             return False
         return True
 
+    async def aircraft_exists(self, registration: str) -> bool:
+        """Async wrapper around ``flight.aircraft_exists`` for use from
+        config flows and service handlers. Lets exceptions from the
+        underlying ``client.search`` propagate to the caller.
+        """
+        return await self.hass.async_add_executor_job(
+            self.flight.aircraft_exists, registration,
+        )
+
     async def remove_flight_track(self, number: str) -> None:
         if not self._is_scanning():
             return
