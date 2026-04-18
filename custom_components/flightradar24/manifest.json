@@ -7,6 +7,6 @@
     "integration_type": "service",
     "iot_class": "cloud_polling",
     "issue_tracker": "https://github.com/dn5qMDW3/home-assistant-flightradar24/issues",
-    "requirements": ["pycountry==24.6.1"],
-    "version": "v2.0.3"
+    "requirements": ["pycountry==26.2.16"],
+    "version": "v2.0.4"
 }
