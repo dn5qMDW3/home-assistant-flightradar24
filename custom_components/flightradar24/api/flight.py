@@ -199,6 +199,32 @@ class FlightProcessor:
             else {registration: placeholder}
         )
 
+    def aircraft_exists(self, registration: str) -> bool:
+        """Return True if FR24's search knows about this registration.
+
+        Considers ``live``, ``schedule``, and ``aircraft`` result categories
+        (matched against ``detail.reg`` / ``detail.callsign`` / ``detail.flight``
+        for the first two, and the top-level ``id`` for the third — the same
+        shape the existing ``_find_flight`` matches). Lets exceptions from
+        ``client.search`` propagate so the caller can distinguish
+        "definitely not in FR24" from "couldn't reach FR24".
+        """
+        registration = registration.upper()
+        flights = self._client.search(registration)
+        for category in ("live", "schedule"):
+            for element in flights.get(category) or []:
+                detail = element.get("detail") or {}
+                if registration in (
+                    detail.get("reg"),
+                    detail.get("callsign"),
+                    detail.get("flight"),
+                ):
+                    return True
+        for element in flights.get("aircraft") or []:
+            if element.get("id") == registration:
+                return True
+        return False
+
     def remove_track(self, number: str) -> dict | None:
         number = number.upper()
         for flight_id, flight in self._tracked.items():

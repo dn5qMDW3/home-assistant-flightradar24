@@ -240,6 +240,49 @@ class TestSubentryPlaceholder:
         assert live["longitude"] == 38.45
 
 
+class TestAircraftExists:
+    @pytest.fixture
+    def processor(self) -> FlightProcessor:
+        return FlightProcessor(
+            client=MagicMock(),
+            event_manager=EventManager(),
+            min_altitude=-1,
+            max_altitude=100000,
+            point=Entity(0.0, 0.0),
+            bounds="",
+        )
+
+    def test_live_match_returns_true(self, processor):
+        processor._client.search.return_value = {
+            "live": [{"id": "lf1", "type": "live", "detail": {
+                "reg": "58-0052", "callsign": None, "flight": None,
+            }}],
+            "schedule": [],
+            "aircraft": [],
+        }
+        assert processor.aircraft_exists("58-0052") is True
+
+    def test_aircraft_match_returns_true(self, processor):
+        processor._client.search.return_value = {
+            "live": [],
+            "schedule": [],
+            "aircraft": [{"id": "G-ABCD", "type": "aircraft"}],
+        }
+        # Lowercase input matches uppercase aircraft id (case-insensitive).
+        assert processor.aircraft_exists("g-abcd") is True
+
+    def test_no_match_returns_false(self, processor):
+        processor._client.search.return_value = {
+            "live": [], "schedule": [], "aircraft": [],
+        }
+        assert processor.aircraft_exists("ZZZ999") is False
+
+    def test_search_exception_propagates(self, processor):
+        processor._client.search.side_effect = ConnectionError("network down")
+        with pytest.raises(ConnectionError):
+            processor.aircraft_exists("58-0052")
+
+
 class TestAddTrack:
     @pytest.fixture
     def processor(self) -> FlightProcessor:
