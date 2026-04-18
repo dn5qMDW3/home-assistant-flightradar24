@@ -171,10 +171,36 @@ def async_register_services(hass: HomeAssistant) -> None:
         )
 
     async def _track_aircraft(call: ServiceCall) -> None:
-        await _add_subentry(
-            hass, call, subentry_type=SUBENTRY_AIRCRAFT, field=ATTR_REGISTRATION,
-            label="Aircraft", validator=_validate_registration,
+        entry = _resolve_entry(hass, call)
+        reg = (call.data[ATTR_REGISTRATION] or "").strip().upper()
+        _validate_registration(reg)
+        if _find_subentry_by_field(entry, SUBENTRY_AIRCRAFT, ATTR_REGISTRATION, reg):
+            raise ServiceValidationError(f"Aircraft {reg} is already tracked.")
+        coordinator = entry.runtime_data
+        try:
+            exists = await coordinator.aircraft_exists(reg)
+        except Exception as err:
+            raise ServiceValidationError(
+                translation_domain=DOMAIN,
+                translation_key="aircraft_check_failed",
+                translation_placeholders={"registration": reg},
+            ) from err
+        if not exists:
+            raise ServiceValidationError(
+                translation_domain=DOMAIN,
+                translation_key="aircraft_not_found",
+                translation_placeholders={"registration": reg},
+            )
+        hass.config_entries.async_add_subentry(
+            entry,
+            ConfigSubentry(
+                data={ATTR_REGISTRATION: reg},
+                subentry_type=SUBENTRY_AIRCRAFT,
+                title=reg,
+                unique_id=None,
+            ),
         )
+        await hass.config_entries.async_reload(entry.entry_id)
 
     async def _untrack_aircraft(call: ServiceCall) -> None:
         await _remove_subentry(
