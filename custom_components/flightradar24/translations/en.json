@@ -214,10 +214,6 @@
     "switch": {
       "scanning": { "name": "API data fetching" }
     },
-    "text": {
-      "add_track": { "name": "Add to track" },
-      "remove_track": { "name": "Remove from track" }
-    },
     "sensor": {
       "in_area": { "name": "Current in area" },
       "entered": { "name": "Entered area" },

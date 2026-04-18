@@ -34,7 +34,6 @@ PLATFORMS: list[Platform] = [
     Platform.DEVICE_TRACKER,
     Platform.SENSOR,
     Platform.SWITCH,
-    Platform.TEXT,
     Platform.WEATHER,
 ]
 
