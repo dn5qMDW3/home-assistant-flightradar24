@@ -144,12 +144,29 @@ class FlightProcessor:
     def enable_most_tracked(self) -> None:
         self._most_tracked = {}
 
+    @staticmethod
+    def _registration_placeholder(registration: str) -> dict[str, Any]:
+        """Synthetic registration-only entry, matching the dict shape
+        ``_find_flight`` already produces for ``type=aircraft`` results
+        (see the elif branch around line 289). Lets ``update_flights_tracked``
+        keep querying ``feed.js?reg=<reg>`` every cycle.
+        """
+        return {
+            "id": registration,
+            "callsign": None,
+            "flight_number": None,
+            "aircraft_registration": registration,
+            "tracked_type": "not_airborne",
+        }
+
     def add_track(self, number: str, from_subentry: bool = False) -> dict | None:
         found: dict[str, dict[str, Any]] = {}
         number = number.upper()
         self._find_flight(found, number)
         if not found:
-            return None
+            if not from_subentry:
+                return None
+            found[number] = self._registration_placeholder(number)
         if from_subentry:
             for entry in found.values():
                 entry["from_subentry"] = True

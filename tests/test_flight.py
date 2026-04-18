@@ -139,6 +139,41 @@ class TestFindFlight:
         assert current == {}
 
 
+class TestSubentryPlaceholder:
+    @pytest.fixture
+    def processor(self) -> FlightProcessor:
+        return FlightProcessor(
+            client=MagicMock(),
+            event_manager=EventManager(),
+            min_altitude=-1,
+            max_altitude=100000,
+            point=Entity(0.0, 0.0),
+            bounds="",
+        )
+
+    def test_empty_search_seeds_subentry_placeholder(self, processor):
+        processor._client.search.return_value = {
+            "live": [], "schedule": [], "aircraft": [],
+        }
+        found = processor.add_track("58-0052", from_subentry=True)
+        assert found is not None
+        assert "58-0052" in processor.tracked
+        entry = processor.tracked["58-0052"]
+        assert entry["aircraft_registration"] == "58-0052"
+        assert entry["tracked_type"] == "not_airborne"
+        assert entry["from_subentry"] is True
+        assert entry["flight_number"] is None
+        assert entry["callsign"] is None
+
+    def test_empty_search_without_subentry_returns_none(self, processor):
+        processor._client.search.return_value = {
+            "live": [], "schedule": [], "aircraft": [],
+        }
+        found = processor.add_track("58-0052", from_subentry=False)
+        assert found is None
+        assert processor.tracked == {}
+
+
 class TestAddTrack:
     @pytest.fixture
     def processor(self) -> FlightProcessor:
