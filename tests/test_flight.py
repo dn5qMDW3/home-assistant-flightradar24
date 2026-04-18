@@ -204,6 +204,41 @@ class TestSubentryPlaceholder:
         assert "ABC123" not in processor.tracked
         assert len(processor.tracked) == 1
 
+    def test_placeholder_replaced_by_live_on_refresh(self, processor):
+        # Seed placeholder via empty search.
+        processor._client.search.return_value = {
+            "live": [], "schedule": [], "aircraft": [],
+        }
+        processor.add_track("58-0052", from_subentry=True)
+        assert "58-0052" in processor.tracked
+
+        # Simulate a refresh: feed.js returns a live Flight for the reg.
+        info = [None] * 20
+        info[0] = "AE0163"        # icao_24bit
+        info[1] = 30.93           # lat
+        info[2] = 38.45           # lon
+        info[3] = 132             # heading
+        info[4] = 21000           # altitude
+        info[5] = 380             # ground_speed
+        info[9] = "58-0052"       # registration
+        info[14] = 0              # on_ground
+        processor._client.get_flights.return_value = [Flight("3f493f60", info)]
+        processor._client.get_flight_details.return_value = {
+            "identification": {"id": "3f493f60"},
+            "aircraft": {"registration": "58-0052"},
+        }
+
+        processor.update_flights_tracked()
+
+        # Real flight ID now present, registration-keyed placeholder dropped.
+        assert "3f493f60" in processor.tracked
+        assert "58-0052" not in processor.tracked
+        live = processor.tracked["3f493f60"]
+        assert live["tracked_type"] == "live"
+        assert live["aircraft_registration"] == "58-0052"
+        assert live["latitude"] == 30.93
+        assert live["longitude"] == 38.45
+
 
 class TestAddTrack:
     @pytest.fixture
