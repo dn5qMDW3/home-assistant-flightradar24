@@ -173,6 +173,37 @@ class TestSubentryPlaceholder:
         assert found is None
         assert processor.tracked == {}
 
+    def test_ensure_subentry_placeholder_is_idempotent(self, processor):
+        # No-op when not present? Seeds correctly.
+        processor.ensure_subentry_placeholder("58-0052")
+        assert "58-0052" in processor.tracked
+        first = processor.tracked["58-0052"]
+        assert first["aircraft_registration"] == "58-0052"
+        assert first["tracked_type"] == "not_airborne"
+        assert first["from_subentry"] is True
+
+        # Calling again with the same reg does not duplicate or overwrite.
+        processor.ensure_subentry_placeholder("58-0052")
+        assert len(processor.tracked) == 1
+        assert processor.tracked["58-0052"] is first  # same dict object
+
+        # Case-insensitive: lowercase input does not create a second entry.
+        processor.ensure_subentry_placeholder("58-0052".lower())
+        assert len(processor.tracked) == 1
+
+        # Skip when a real entry already references this registration
+        # (e.g. live entry keyed by FR24 flight ID with matching reg).
+        processor._tracked = {
+            "3f493f60": {
+                "id": "3f493f60",
+                "aircraft_registration": "ABC123",
+                "tracked_type": "live",
+            }
+        }
+        processor.ensure_subentry_placeholder("ABC123")
+        assert "ABC123" not in processor.tracked
+        assert len(processor.tracked) == 1
+
 
 class TestAddTrack:
     @pytest.fixture

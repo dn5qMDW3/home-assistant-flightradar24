@@ -174,6 +174,31 @@ class FlightProcessor:
 
         return found
 
+    def ensure_subentry_placeholder(self, registration: str) -> None:
+        """Idempotently seed a registration-only placeholder for a subentry.
+
+        Used by the coordinator's add_flight_track except clause so a
+        transient FR24 search failure at startup does not strand the
+        registration outside _tracked. Skips if the registration already
+        appears anywhere in _tracked (as a placeholder key or as the
+        aircraft_registration of a live/scheduled entry).
+        """
+        registration = registration.upper()
+        if registration in self._tracked:
+            return
+        if any(
+            (entry.get("aircraft_registration") or "").upper() == registration
+            for entry in self._tracked.values()
+        ):
+            return
+        placeholder = self._registration_placeholder(registration)
+        placeholder["from_subentry"] = True
+        self._tracked = (
+            self._tracked | {registration: placeholder}
+            if self._tracked
+            else {registration: placeholder}
+        )
+
     def remove_track(self, number: str) -> dict | None:
         number = number.upper()
         for flight_id, flight in self._tracked.items():
