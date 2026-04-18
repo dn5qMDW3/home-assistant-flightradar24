@@ -79,13 +79,21 @@
       },
       "error": {
         "invalid_registration": "Registration looks invalid — it should be at least 3 characters.",
-        "aircraft_already_tracked": "That aircraft is already tracked by another subentry."
+        "aircraft_already_tracked": "That aircraft is already tracked by another subentry.",
+        "aircraft_not_found": "Aircraft not found. Flightradar24 doesn't recognize this tail number — check spelling and try again.",
+        "aircraft_check_failed": "Couldn't reach Flightradar24 to verify. Check your connection and try again."
       }
     }
   },
   "exceptions": {
     "flight_not_found": {
       "message": "No flight found matching {number}. Check the flight number, callsign, or aircraft registration and try again."
+    },
+    "aircraft_not_found": {
+      "message": "Aircraft {registration} is not known to Flightradar24. Check the tail number and try again."
+    },
+    "aircraft_check_failed": {
+      "message": "Couldn't verify {registration} with Flightradar24 — check your connection and try again."
     }
   },
   "services": {
