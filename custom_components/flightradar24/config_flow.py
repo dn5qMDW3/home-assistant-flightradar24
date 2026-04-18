@@ -1,6 +1,6 @@
 from __future__ import annotations
 from logging import getLogger
-from typing import Any
+from typing import Any, TYPE_CHECKING
 import voluptuous as vol
 from .api.client import FlightRadar24API, LoginError
 import homeassistant.helpers.config_validation as cv
@@ -41,6 +41,9 @@ from .const import (
     SUBENTRY_AIRCRAFT,
     SUBENTRY_AIRPORT,
 )
+
+if TYPE_CHECKING:
+    from .coordinator import FlightRadar24Coordinator
 
 _LOGGER = getLogger(__name__)
 
@@ -270,7 +273,18 @@ class AircraftSubentryFlow(ConfigSubentryFlow):
                 if already:
                     errors["base"] = "aircraft_already_tracked"
                 else:
-                    return self.async_create_entry(title=reg, data={"registration": reg})
+                    coordinator: "FlightRadar24Coordinator" = entry.runtime_data
+                    try:
+                        exists = await coordinator.aircraft_exists(reg)
+                    except Exception:  # noqa: BLE001 — surface any FR24/network failure as "can't verify"
+                        errors["base"] = "aircraft_check_failed"
+                    else:
+                        if not exists:
+                            errors["base"] = "aircraft_not_found"
+                        else:
+                            return self.async_create_entry(
+                                title=reg, data={"registration": reg},
+                            )
 
         schema = vol.Schema({vol.Required("registration"): cv.string})
         return self.async_show_form(step_id="user", data_schema=schema, errors=errors)
