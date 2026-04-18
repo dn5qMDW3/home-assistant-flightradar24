@@ -4,7 +4,12 @@ from typing import Any
 import voluptuous as vol
 from .api.client import FlightRadar24API, LoginError
 import homeassistant.helpers.config_validation as cv
-from homeassistant.config_entries import ConfigEntry, ConfigFlow, OptionsFlow
+from homeassistant.config_entries import (
+    ConfigEntry,
+    ConfigFlow,
+    ConfigSubentryFlow,
+    OptionsFlow,
+)
 from homeassistant.const import (
     CONF_LATITUDE,
     CONF_LONGITUDE,
@@ -35,6 +40,8 @@ from .const import (
     DOMAIN,
     MAX_ALTITUDE,
     MIN_ALTITUDE,
+    SUBENTRY_AIRCRAFT,
+    SUBENTRY_AIRPORT,
 )
 
 _LOGGER = getLogger(__name__)
@@ -60,6 +67,16 @@ _PASSWORD_SELECTOR = TextSelector(TextSelectorConfig(type=TextSelectorType.PASSW
 
 
 class FlightRadarConfigFlow(ConfigFlow, domain=DOMAIN):
+
+    @classmethod
+    @callback
+    def async_get_supported_subentry_types(
+            cls, config_entry: ConfigEntry,
+    ) -> dict[str, type[ConfigSubentryFlow]]:
+        return {
+            SUBENTRY_AIRPORT: AirportSubentryFlow,
+            SUBENTRY_AIRCRAFT: AircraftSubentryFlow,
+        }
 
     async def async_step_user(self, user_input: dict[str, Any] | None = None) -> FlowResult:
         errors: dict[str, str] = {}
@@ -215,3 +232,52 @@ class FlightRadarOptionsFlow(OptionsFlow):
         })
 
         return self.async_show_form(step_id="init", data_schema=data_schema, errors=errors)
+
+
+class AirportSubentryFlow(ConfigSubentryFlow):
+    """Flow for adding / reconfiguring an airport subentry."""
+
+    async def async_step_user(self, user_input: dict[str, Any] | None = None) -> FlowResult:
+        errors: dict[str, str] = {}
+        if user_input is not None:
+            code = (user_input.get("code") or "").strip().upper()
+            if not (3 <= len(code) <= 4) or not code.isalpha():
+                errors["base"] = "invalid_airport_code"
+            else:
+                entry = self._get_entry()
+                already = any(
+                    sub.subentry_type == SUBENTRY_AIRPORT and sub.data.get("code") == code
+                    for sub in entry.subentries.values()
+                )
+                if already:
+                    errors["base"] = "airport_already_tracked"
+                else:
+                    return self.async_create_entry(title=code, data={"code": code})
+
+        schema = vol.Schema({vol.Required("code"): cv.string})
+        return self.async_show_form(step_id="user", data_schema=schema, errors=errors)
+
+
+class AircraftSubentryFlow(ConfigSubentryFlow):
+    """Flow for adding / reconfiguring an aircraft (tail number) subentry."""
+
+    async def async_step_user(self, user_input: dict[str, Any] | None = None) -> FlowResult:
+        errors: dict[str, str] = {}
+        if user_input is not None:
+            reg = (user_input.get("registration") or "").strip().upper()
+            if not reg or len(reg) < 3:
+                errors["base"] = "invalid_registration"
+            else:
+                entry = self._get_entry()
+                already = any(
+                    sub.subentry_type == SUBENTRY_AIRCRAFT
+                    and sub.data.get("registration") == reg
+                    for sub in entry.subentries.values()
+                )
+                if already:
+                    errors["base"] = "aircraft_already_tracked"
+                else:
+                    return self.async_create_entry(title=reg, data={"registration": reg})
+
+        schema = vol.Schema({vol.Required("registration"): cv.string})
+        return self.async_show_form(step_id="user", data_schema=schema, errors=errors)

@@ -26,7 +26,7 @@ extra premium fields (see [Premium login](#premium-login)).
 - [Requirements](#requirements)
 - [Installation](#installation)
 - [Configuration](#configuration)
-- [Tracking a specific flight](#tracking-a-specific-flight)
+- [Tracking flights, airports, and aircraft](#tracking-flights-airports-and-aircraft)
 - [Architecture](#architecture)
 - [Entities](#entities)
 - [Premium login](#premium-login)
@@ -44,10 +44,15 @@ extra premium fields (see [Premium login](#premium-login)).
   `ConfigEntry[T]`, plain `OptionsFlow`, `_attr_has_entity_name = True`
   everywhere, translation keys for all entity names, typed data update
   coordinator, `asyncio.gather` for parallel upstream calls.
-- **Services** — `flightradar24.track_flight`, `untrack_flight`,
-  `clear_tracked`, and `search_flight` (with service response) let users
-  track flights from Developer Tools, automations, or Lovelace buttons
-  instead of pasting into a text entity.
+- **Config entry subentries** for airports and aircraft. Each tracked
+  airport (IATA/ICAO) and each tracked aircraft (tail number) becomes a
+  config subentry with its own HA device + full sensor set. The legacy
+  `text.*_airport_track` entity has been removed — airports live in
+  subentries exclusively.
+- **Eight services** — `track_flight`, `untrack_flight`, `clear_tracked`,
+  `search_flight` (with response), `track_airport`, `untrack_airport`,
+  `track_aircraft`, `untrack_aircraft`. All invokable from Developer
+  Tools, automations, and Lovelace buttons.
 - **Reauth flow** — bad credentials now raise `ConfigEntryAuthFailed`
   and surface a HA "Reconfigure" prompt instead of a silent retry loop.
 - **Diagnostics platform** — click *Download diagnostics* on the integration
@@ -97,43 +102,68 @@ After adding the entry you can edit altitude bounds, toggle most-tracked
 and per-flight device_tracker, and enter a Flightradar24 username/password
 under the entry's **Configure** button.
 
-## Tracking a specific flight
+## Tracking flights, airports, and aircraft
 
-Three equivalent ways, pick whichever fits the context:
+Three distinct tracking modes, each best suited to a different kind of
+thing:
 
-1. **Developer Tools → Services** — the fastest interactive path. Type
-   `flightradar24` into the service picker and you'll find:
+| Mode | What it tracks | How to add |
+|---|---|---|
+| **Flight** (ephemeral) | A commercial flight by its number / callsign / registration for as long as it's flying | Service `track_flight` or `text.*_add_to_track` |
+| **Airport** (persistent subentry) | An airport's arrivals, departures, delay stats, weather, aircraft count | **+ Add airport** button on the integration card, or service `track_airport` |
+| **Aircraft** (persistent subentry) | A specific airframe by tail number — survives landings, reappears on next takeoff | **+ Add aircraft** button on the integration card, or service `track_aircraft` |
 
-   | Service | Purpose |
-   |---|---|
-   | `flightradar24.track_flight` | Add a flight by number / callsign / registration |
-   | `flightradar24.untrack_flight` | Remove a flight from the tracked list |
-   | `flightradar24.clear_tracked` | Remove every flight from the tracked list |
-   | `flightradar24.search_flight` | Search FR24 — returns matches as service response |
+### Services catalog
 
-2. **Automations / scripts** — call the same services from YAML:
+Type `flightradar24` into Developer Tools → Services to see all eight:
 
-   ```yaml
-   # Track BA117 when I say "Hey Google, track the flight"
-   action:
-     - service: flightradar24.track_flight
-       data:
-         number: "BA117"
-   ```
+| Service | Purpose | Response |
+|---|---|---|
+| `flightradar24.track_flight` | Add a flight by number / callsign / registration | — |
+| `flightradar24.untrack_flight` | Remove a flight from the tracked list | — |
+| `flightradar24.clear_tracked` | Clear ephemeral tracked flights (subentry-added aircraft are preserved) | — |
+| `flightradar24.search_flight` | Search FR24 for matches | structured results |
+| `flightradar24.track_airport` | Create an airport subentry | — |
+| `flightradar24.untrack_airport` | Remove an airport subentry | — |
+| `flightradar24.track_aircraft` | Create an aircraft subentry | — |
+| `flightradar24.untrack_aircraft` | Remove an aircraft subentry | — |
 
-3. **Dashboard entities** — the `text.*_add_to_track` and
-   `text.*_remove_from_track` inputs still work for copy‑paste UX.
+All eight share the same optional `entry_id` selector — only needed if
+you have multiple Flightradar24 config entries. Input is validated and
+raises `ServiceValidationError` with a translated message on bad data.
 
-When a flight can't be resolved, the integration surfaces it two ways:
+### From automations
 
-- Service calls (`flightradar24.track_flight`) raise `ServiceValidationError`
-  with a translated message — HA shows a red toast in the UI.
-- Both service calls and `text.*_add_to_track` fire
-  `flightradar24_flight_not_found` on the event bus, so you can route the
-  failure to any notification channel:
+```yaml
+# Track BA117 when I ask for it via voice
+action:
+  - service: flightradar24.track_flight
+    data:
+      number: "BA117"
+
+# Add an airport subentry on integration setup
+action:
+  - service: flightradar24.track_airport
+    data:
+      code: "LHR"
+
+# Track a specific aircraft persistently
+action:
+  - service: flightradar24.track_aircraft
+    data:
+      registration: "4X-ISR"
+```
+
+### Flight-not-found feedback
+
+When a flight number can't be resolved:
+
+- Service calls raise `ServiceValidationError` with a translated message
+  — HA shows a red toast in the UI.
+- Both the service and `text.*_add_to_track` fire
+  `flightradar24_flight_not_found` on the event bus:
 
   ```yaml
-  # Example: persistent notification when a flight isn't found
   trigger:
     - platform: event
       event_type: flightradar24_flight_not_found
@@ -141,24 +171,31 @@ When a flight can't be resolved, the integration surfaces it two ways:
     - service: persistent_notification.create
       data:
         title: Flightradar24 — flight not found
-        message: "Could not track '{{ trigger.event.data.number }}'."
+        message: "Could not track {{ trigger.event.data.number }}."
   ```
 
+### Search-then-track
+
+`search_flight` returns results as a **service response**, so you can
+inspect matches before calling `track_flight`:
+
+```yaml
+action:
+  - service: flightradar24.search_flight
+    data:
+      query: "BA117"
+    response_variable: match
+  - service: flightradar24.track_flight
+    data:
+      number: "{{ match.results.live[0].detail.flight }}"
+```
+
 > [!TIP]
-> `search_flight` returns results as a **service response**, so you can
-> inspect matches interactively in Developer Tools before calling
-> `track_flight`:
->
-> ```yaml
-> action:
->   - service: flightradar24.search_flight
->     data:
->       query: "BA117"
->     response_variable: match
->   - service: flightradar24.track_flight
->     data:
->       number: "{{ match.results.live[0].detail.flight }}"
-> ```
+> For **aircraft** that aren't currently flying, `track_aircraft` still
+> works — it adds a registration-only placeholder (state:
+> `not_airborne`) that upgrades to a live flight the moment the aircraft
+> takes off. The subentry survives restarts; the placeholder is
+> reconciled on each coordinator tick.
 
 ## Architecture
 
@@ -229,6 +266,12 @@ platforms.
 Each sensor exposes the full flight list as a `flights` attribute.
 </details>
 
+> [!NOTE]
+> Airport sensors below are created **per airport subentry**. Each
+> airport you add becomes its own device with the full sensor set + a
+> weather entity. Before any airport subentry is added, only the five
+> Area sensors above exist.
+
 <details><summary><b>Airport &mdash; today (10 sensors)</b></summary>
 
 | Direction | Keys |
@@ -293,11 +336,26 @@ model, airline, and time-on-ground fields (`on_ground_since`,
 | Entity | Purpose |
 |---|---|
 | `switch.*_api_data_fetching` | Pause all upstream calls |
-| `text.*_add_to_track` | Start tracking a flight by number / callsign / registration |
+| `text.*_add_to_track` | Start tracking a flight by number / callsign / registration (ephemeral) |
 | `text.*_remove_from_track` | Stop tracking a flight |
-| `text.*_airport_track` | Start tracking an airport (IATA/ICAO); empty clears |
-| `button.*_clear_additional_tracked` | Clear the additional-tracked list |
+| `button.*_clear_additional_tracked` | Clear ephemeral tracked flights; subentry aircraft are preserved |
 | `device_tracker.flightradar24` | Optional tracker entity for one tracked flight |
+
+### Per-aircraft-subentry entities
+
+Each aircraft subentry gets its own device with:
+
+- `sensor.flightradar24_<reg>` — status (`airborne` / `on ground` /
+  `not found` / `unknown`) with the full flight data as attributes.
+- `device_tracker.flightradar24_<reg>_tracker` — GPS-source tracker that
+  follows that specific airframe when airborne.
+
+### Per-airport-subentry entities
+
+Each airport subentry gets its own device with the **full airport sensor
+set** (today / yesterday / recent stats, schedule lists, aircraft
+counts, weather readings) and one `weather` entity that renders in HA's
+native weather card.
 
 ## Premium login
 
@@ -322,8 +380,9 @@ When logged in:
 
 ## Development
 
-A Python 3.12+ venv with `flake8` is used for local checks. The repo
-ships two helper scripts:
+A Python 3.14+ venv with `flake8` is used for local checks (Home
+Assistant 2026.3+ requires Python 3.14). The repo ships two helper
+scripts:
 
 | Script | Purpose |
 |---|---|

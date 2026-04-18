@@ -44,3 +44,55 @@ search_flight:
       selector:
         config_entry:
           integration: flightradar24
+
+track_airport:
+  fields:
+    code:
+      required: true
+      example: "LHR"
+      selector:
+        text:
+    entry_id:
+      required: false
+      selector:
+        config_entry:
+          integration: flightradar24
+
+untrack_airport:
+  fields:
+    code:
+      required: true
+      example: "LHR"
+      selector:
+        text:
+    entry_id:
+      required: false
+      selector:
+        config_entry:
+          integration: flightradar24
+
+track_aircraft:
+  fields:
+    registration:
+      required: true
+      example: "4X-ISR"
+      selector:
+        text:
+    entry_id:
+      required: false
+      selector:
+        config_entry:
+          integration: flightradar24
+
+untrack_aircraft:
+  fields:
+    registration:
+      required: true
+      example: "4X-ISR"
+      selector:
+        text:
+    entry_id:
+      required: false
+      selector:
+        config_entry:
+          integration: flightradar24

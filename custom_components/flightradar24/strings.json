@@ -52,6 +52,38 @@
       "login_failed": "Login to Flightradar24 failed. Check your credentials."
     }
   },
+  "config_subentries": {
+    "airport": {
+      "initiate_flow": { "user": "Add airport" },
+      "entry_type": "Airport",
+      "step": {
+        "user": {
+          "title": "Track an airport",
+          "description": "Enter the airport's IATA (3-letter) or ICAO (4-letter) code. Each airport gets its own device with arrivals, departures, delay statistics, weather, and aircraft counts.",
+          "data": { "code": "Airport code" }
+        }
+      },
+      "error": {
+        "invalid_airport_code": "Airport code must be 3 (IATA) or 4 (ICAO) letters.",
+        "airport_already_tracked": "That airport is already tracked by another subentry."
+      }
+    },
+    "aircraft": {
+      "initiate_flow": { "user": "Add aircraft" },
+      "entry_type": "Aircraft",
+      "step": {
+        "user": {
+          "title": "Track an aircraft",
+          "description": "Enter the aircraft registration (tail number), e.g. G-ABCD, N12345, 4X-ISR. The aircraft is tracked persistently — even when it's on the ground, it reappears the moment it takes off.",
+          "data": { "registration": "Aircraft registration" }
+        }
+      },
+      "error": {
+        "invalid_registration": "Registration looks invalid — it should be at least 3 characters.",
+        "aircraft_already_tracked": "That aircraft is already tracked by another subentry."
+      }
+    }
+  },
   "exceptions": {
     "flight_not_found": {
       "message": "No flight found matching {number}. Check the flight number, callsign, or aircraft registration and try again."
@@ -109,19 +141,82 @@
           "description": "Only needed if you have multiple Flightradar24 entries configured."
         }
       }
+    },
+    "track_airport": {
+      "name": "Track airport",
+      "description": "Add a new airport subentry (IATA/ICAO code). The airport gets its own device with sensors + weather.",
+      "fields": {
+        "code": {
+          "name": "Airport code",
+          "description": "IATA (3 letters) or ICAO (4 letters)."
+        },
+        "entry_id": {
+          "name": "Config entry",
+          "description": "Only needed if you have multiple Flightradar24 entries configured."
+        }
+      }
+    },
+    "untrack_airport": {
+      "name": "Untrack airport",
+      "description": "Remove a previously-added airport subentry (and its device).",
+      "fields": {
+        "code": {
+          "name": "Airport code",
+          "description": "IATA (3 letters) or ICAO (4 letters)."
+        },
+        "entry_id": {
+          "name": "Config entry",
+          "description": "Only needed if you have multiple Flightradar24 entries configured."
+        }
+      }
+    },
+    "track_aircraft": {
+      "name": "Track aircraft",
+      "description": "Add a new aircraft subentry by tail number / registration. Tracked persistently — the aircraft reappears when it takes off.",
+      "fields": {
+        "registration": {
+          "name": "Aircraft registration",
+          "description": "Tail number, e.g. 4X-ISR, G-ABCD, N12345."
+        },
+        "entry_id": {
+          "name": "Config entry",
+          "description": "Only needed if you have multiple Flightradar24 entries configured."
+        }
+      }
+    },
+    "untrack_aircraft": {
+      "name": "Untrack aircraft",
+      "description": "Remove a previously-added aircraft subentry (and its device).",
+      "fields": {
+        "registration": {
+          "name": "Aircraft registration",
+          "description": "Tail number of the aircraft to remove."
+        },
+        "entry_id": {
+          "name": "Config entry",
+          "description": "Only needed if you have multiple Flightradar24 entries configured."
+        }
+      }
     }
   },
   "entity": {
+    "binary_sensor": {
+      "aircraft_in_area": { "name": "Aircraft in area" },
+      "tracked_flight_airborne": { "name": "Tracked flight airborne" },
+      "airport_tracked": { "name": "Airport tracked" }
+    },
     "button": {
       "tracked_clear": { "name": "Clear additional tracked" }
+    },
+    "weather": {
+      "airport_weather": { "name": "Airport weather" }
     },
     "switch": {
       "scanning": { "name": "API data fetching" }
     },
     "text": {
       "add_track": { "name": "Add to track" },
-      "remove_track": { "name": "Remove from track" },
-      "airport_track": { "name": "Airport track" }
+      "remove_track": { "name": "Remove from track" }
     },
     "sensor": {
       "in_area": { "name": "Current in area" },
@@ -166,7 +261,16 @@
       "airport_departures_on_time_recent": { "name": "Airport departures on time (recent)" },
       "airport_departures_delayed_recent": { "name": "Airport departures delayed (recent)" },
       "airport_departures_canceled_recent": { "name": "Airport departures canceled (recent)" },
-      "airport_ground": { "name": "Airport aircraft on ground (list)" }
+      "airport_ground": { "name": "Airport aircraft on ground (list)" },
+      "aircraft_status": {
+        "name": "Status",
+        "state": {
+          "live": "Airborne",
+          "not_airborne": "On ground",
+          "not_found": "Not found",
+          "unknown": "Unknown"
+        }
+      }
     }
   }
 }

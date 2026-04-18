@@ -14,11 +14,21 @@ _REDACT = {CONF_LATITUDE, CONF_LONGITUDE, CONF_PASSWORD, CONF_USERNAME}
 
 
 async def async_get_config_entry_diagnostics(
-        hass: HomeAssistant, entry: FlightRadar24ConfigEntry
+        hass: HomeAssistant, entry: FlightRadar24ConfigEntry,
 ) -> dict[str, Any]:
     coordinator = entry.runtime_data
-    airport = coordinator.airport
     flight = coordinator.flight
+
+    airports: dict[str, dict[str, Any]] = {}
+    for code, state in coordinator.airport.subentry_airports.items():
+        airports[code] = {
+            "has_stats": state.stats is not None,
+            "has_weather": state.weather is not None,
+            "has_aircraft_count": state.aircraft_count is not None,
+            "arrivals_count": len(state.arrivals) if state.arrivals is not None else None,
+            "departures_count": len(state.departures) if state.departures is not None else None,
+            "ground_count": len(state.ground) if state.ground is not None else None,
+        }
 
     return {
         "entry": async_redact_data(entry.as_dict(), _REDACT),
@@ -39,11 +49,7 @@ async def async_get_config_entry_diagnostics(
             "most_tracked_count": (
                 len(flight.most_tracked_list) if flight.most_tracked_list else 0
             ),
+            "tracked_types": [f.get("tracked_type") for f in flight.tracked.values()],
         },
-        "airport": {
-            "tracked_code": airport.code,
-            "has_stats": airport.stats is not None,
-            "arrivals_count": len(airport.arrivals) if airport.arrivals is not None else None,
-            "departures_count": len(airport.departures) if airport.departures is not None else None,
-        },
+        "airports": airports,
     }

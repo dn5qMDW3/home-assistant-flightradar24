@@ -55,17 +55,22 @@ class FlightRadar24Coordinator(DataUpdateCoordinator[None]):
             return False
         return True
 
-    async def add_flight_track(self, number: str) -> bool:
+    async def add_flight_track(self, number: str, *, from_subentry: bool = False) -> bool:
         """Return True if the flight was added, False otherwise.
 
         Fires ``flightradar24_flight_not_found`` on the HA event bus when
         the flight cannot be resolved, so automations (and the matching
         service handler's ServiceValidationError) can surface it.
+
+        If ``from_subentry`` is True, the tracked entry is tagged so that
+        :meth:`clear_flight_tracks` preserves it across the service call.
         """
         if not self._is_scanning():
             return False
         try:
-            found = await self.hass.async_add_executor_job(self.flight.add_track, number)
+            found = await self.hass.async_add_executor_job(
+                self.flight.add_track, number, from_subentry,
+            )
         except Exception as err:
             self.logger.error("FlightRadar24: %s", err)
             self.hass.bus.async_fire(
@@ -92,17 +97,6 @@ class FlightRadar24Coordinator(DataUpdateCoordinator[None]):
 
     async def search_flights(self, query: str) -> dict:
         return await self.hass.async_add_executor_job(self.client.search, query)
-
-    async def update_airport_track(self, code: str) -> None:
-        if not self._is_scanning():
-            return
-        try:
-            if not code:
-                await self.hass.async_add_executor_job(self.airport.remove_track)
-            else:
-                await self.hass.async_add_executor_job(self.airport.set_track, code)
-        except Exception as err:
-            self.logger.error("FlightRadar24: %s", err)
 
     async def _async_update_data(self) -> None:
         if not self.scanning:

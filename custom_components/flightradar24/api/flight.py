@@ -20,6 +20,68 @@ class FlightType(Enum):
     IN_AREA = 2
 
 
+def _to_country_alpha2(code: str | None) -> str | None:
+    if code is None or len(code) == 2:
+        return code
+    country = pycountry.countries.get(alpha_3=code)
+    return country.alpha_2 if country is not None else code
+
+
+# Field-name → JSON path for ``get_flight_details`` response.
+# Country-code fields are post-processed to ISO 3166 alpha-2 after extraction.
+_FLIGHT_FIELDS: tuple[tuple[str, tuple[str | int, ...]], ...] = (
+    ('flight_number', ('identification', 'number', 'default')),
+    ('callsign', ('identification', 'callsign')),
+    ('aircraft_registration', ('aircraft', 'registration')),
+    ('aircraft_photo_small', ('aircraft', 'images', 'thumbnails', 0, 'src')),
+    ('aircraft_photo_medium', ('aircraft', 'images', 'medium', 0, 'src')),
+    ('aircraft_photo_large', ('aircraft', 'images', 'large', 0, 'src')),
+    ('aircraft_model', ('aircraft', 'model', 'text')),
+    ('aircraft_code', ('aircraft', 'model', 'code')),
+    ('airline', ('airline', 'name')),
+    ('airline_short', ('airline', 'short')),
+    ('airline_iata', ('airline', 'code', 'iata')),
+    ('airline_icao', ('airline', 'code', 'icao')),
+    ('airport_origin_name', ('airport', 'origin', 'name')),
+    ('airport_origin_code_iata', ('airport', 'origin', 'code', 'iata')),
+    ('airport_origin_code_icao', ('airport', 'origin', 'code', 'icao')),
+    ('airport_origin_country_name', ('airport', 'origin', 'position', 'country', 'name')),
+    ('airport_origin_country_code', ('airport', 'origin', 'position', 'country', 'code')),
+    ('airport_origin_city', ('airport', 'origin', 'position', 'region', 'city')),
+    ('airport_origin_timezone_offset', ('airport', 'origin', 'timezone', 'offset')),
+    ('airport_origin_timezone_abbr', ('airport', 'origin', 'timezone', 'abbr')),
+    ('airport_origin_terminal', ('airport', 'origin', 'info', 'terminal')),
+    ('airport_origin_latitude', ('airport', 'origin', 'position', 'latitude')),
+    ('airport_origin_longitude', ('airport', 'origin', 'position', 'longitude')),
+    ('airport_destination_name', ('airport', 'destination', 'name')),
+    ('airport_destination_code_iata', ('airport', 'destination', 'code', 'iata')),
+    ('airport_destination_code_icao', ('airport', 'destination', 'code', 'icao')),
+    ('airport_destination_country_name', ('airport', 'destination', 'position', 'country', 'name')),
+    ('airport_destination_country_code', ('airport', 'destination', 'position', 'country', 'code')),
+    ('airport_destination_city', ('airport', 'destination', 'position', 'region', 'city')),
+    ('airport_destination_timezone_offset', ('airport', 'destination', 'timezone', 'offset')),
+    ('airport_destination_timezone_abbr', ('airport', 'destination', 'timezone', 'abbr')),
+    ('airport_destination_terminal', ('airport', 'destination', 'info', 'terminal')),
+    ('airport_destination_latitude', ('airport', 'destination', 'position', 'latitude')),
+    ('airport_destination_longitude', ('airport', 'destination', 'position', 'longitude')),
+    ('time_scheduled_departure', ('time', 'scheduled', 'departure')),
+    ('time_scheduled_arrival', ('time', 'scheduled', 'arrival')),
+    ('time_real_departure', ('time', 'real', 'departure')),
+    ('time_real_arrival', ('time', 'real', 'arrival')),
+    ('time_estimated_departure', ('time', 'estimated', 'departure')),
+    ('time_estimated_arrival', ('time', 'estimated', 'arrival')),
+    # Premium-only EMS / Mode-S data (populated when logged in, None otherwise).
+    ('mach', ('ems', 'mach')),
+    ('indicated_airspeed', ('ems', 'ias')),
+    ('true_airspeed', ('ems', 'tas')),
+    ('outside_air_temperature', ('ems', 'oat')),
+    ('wind_direction', ('ems', 'wind_dir')),
+    ('wind_speed', ('ems', 'wind_speed')),
+    ('gps_altitude', ('ems', 'agps')),
+    ('selected_altitude', ('ems', 'mcp')),
+)
+
+
 class FlightProcessor:
     __slots__ = ('_in_area', '_tracked', '_most_tracked', '_entered', '_exited', '_min_altitude', '_max_altitude',
                  '_point', '_client', '_bounds', '_event_manager')
@@ -70,7 +132,11 @@ class FlightProcessor:
         return self._exited
 
     def clear_tracked(self) -> None:
-        self._tracked = {}
+        """Clear ephemeral tracked flights. Preserves subentry-added aircraft."""
+        self._tracked = {
+            fid: entry for fid, entry in self._tracked.items()
+            if entry.get("from_subentry")
+        }
 
     def set_tracked(self, tracked: dict[str, dict[str, Any]]) -> None:
         self._tracked = tracked
@@ -78,12 +144,15 @@ class FlightProcessor:
     def enable_most_tracked(self) -> None:
         self._most_tracked = {}
 
-    def add_track(self, number: str) -> dict | None:
+    def add_track(self, number: str, from_subentry: bool = False) -> dict | None:
         found: dict[str, dict[str, Any]] = {}
         number = number.upper()
         self._find_flight(found, number)
         if not found:
             return None
+        if from_subentry:
+            for entry in found.values():
+                entry["from_subentry"] = True
         self._tracked = self._tracked | found if self._tracked else found
 
         return found
@@ -295,76 +364,16 @@ class FlightProcessor:
                                            else EVENT_TRACKED_LANDED, [flight])
 
     def _get_flight_data(self, flight: dict) -> dict[str, Any] | None:
-
-        def _get_country_code(code: None | str) -> None | str:
-            if code is None or len(code) == 2:
-                return code
-
-            country = pycountry.countries.get(alpha_3=code)
-
-            return country.alpha_2 if country is not None else code
-
         flight_id = get_value(flight, ['identification', 'id'])
         if flight_id is None:
             return None
 
-        return {
-            'id': flight_id,
-            'flight_number': get_value(flight, ['identification', 'number', 'default']),
-            'callsign': get_value(flight, ['identification', 'callsign']),
-            'aircraft_registration': get_value(flight, ['aircraft', 'registration']),
-            'aircraft_photo_small': get_value(flight, ['aircraft', 'images', 'thumbnails', 0, 'src']),
-            'aircraft_photo_medium': get_value(flight, ['aircraft', 'images', 'medium', 0, 'src']),
-            'aircraft_photo_large': get_value(flight, ['aircraft', 'images', 'large', 0, 'src']),
-            'aircraft_model': get_value(flight, ['aircraft', 'model', 'text']),
-            'aircraft_code': get_value(flight, ['aircraft', 'model', 'code']),
-            'airline': get_value(flight, ['airline', 'name']),
-            'airline_short': get_value(flight, ['airline', 'short']),
-            'airline_iata': get_value(flight, ['airline', 'code', 'iata']),
-            'airline_icao': get_value(flight, ['airline', 'code', 'icao']),
-            'airport_origin_name': get_value(flight, ['airport', 'origin', 'name']),
-            'airport_origin_code_iata': get_value(flight, ['airport', 'origin', 'code', 'iata']),
-            'airport_origin_code_icao': get_value(flight, ['airport', 'origin', 'code', 'icao']),
-            'airport_origin_country_name': get_value(flight, ['airport', 'origin', 'position', 'country', 'name']),
-            'airport_origin_country_code': _get_country_code(
-                get_value(flight, ['airport', 'origin', 'position', 'country', 'code'])),
-            'airport_origin_city': get_value(flight, ['airport', 'origin', 'position', 'region', 'city']),
-            'airport_origin_timezone_offset': get_value(flight, ['airport', 'origin', 'timezone', 'offset']),
-            'airport_origin_timezone_abbr': get_value(flight, ['airport', 'origin', 'timezone', 'abbr']),
-            'airport_origin_terminal': get_value(flight, ['airport', 'origin', 'info', 'terminal']),
-            'airport_origin_latitude': get_value(flight, ['airport', 'origin', 'position', 'latitude']),
-            'airport_origin_longitude': get_value(flight, ['airport', 'origin', 'position', 'longitude']),
-            'airport_destination_name': get_value(flight, ['airport', 'destination', 'name']),
-            'airport_destination_code_iata': get_value(flight, ['airport', 'destination', 'code', 'iata']),
-            'airport_destination_code_icao': get_value(flight, ['airport', 'destination', 'code', 'icao']),
-            'airport_destination_country_name': get_value(flight, ['airport', 'destination', 'position',
-                                                                   'country', 'name']),
-            'airport_destination_country_code': _get_country_code(
-                get_value(flight, ['airport', 'destination', 'position', 'country', 'code'])),
-            'airport_destination_city': get_value(flight, ['airport', 'destination', 'position',
-                                                           'region', 'city']),
-            'airport_destination_timezone_offset': get_value(flight,
-                                                             ['airport', 'destination', 'timezone', 'offset']),
-            'airport_destination_timezone_abbr': get_value(flight, ['airport', 'destination', 'timezone', 'abbr']),
-            'airport_destination_terminal': get_value(flight, ['airport', 'destination', 'info', 'terminal']),
-            'airport_destination_latitude': get_value(flight, ['airport', 'destination', 'position', 'latitude']),
-            'airport_destination_longitude': get_value(flight, ['airport', 'destination', 'position', 'longitude']),
-            'time_scheduled_departure': get_value(flight, ['time', 'scheduled', 'departure']),
-            'time_scheduled_arrival': get_value(flight, ['time', 'scheduled', 'arrival']),
-            'time_real_departure': get_value(flight, ['time', 'real', 'departure']),
-            'time_real_arrival': get_value(flight, ['time', 'real', 'arrival']),
-            'time_estimated_departure': get_value(flight, ['time', 'estimated', 'departure']),
-            'time_estimated_arrival': get_value(flight, ['time', 'estimated', 'arrival']),
-            # Premium-only EMS / Mode-S data (populated when logged in, None otherwise).
-            'mach': get_value(flight, ['ems', 'mach']),
-            'indicated_airspeed': get_value(flight, ['ems', 'ias']),
-            'true_airspeed': get_value(flight, ['ems', 'tas']),
-            'outside_air_temperature': get_value(flight, ['ems', 'oat']),
-            'wind_direction': get_value(flight, ['ems', 'wind_dir']),
-            'wind_speed': get_value(flight, ['ems', 'wind_speed']),
-            'gps_altitude': get_value(flight, ['ems', 'agps']),
-            'selected_altitude': get_value(flight, ['ems', 'mcp']),
-        }
+        data: dict[str, Any] = {'id': flight_id}
+        for key, path in _FLIGHT_FIELDS:
+            data[key] = get_value(flight, list(path))
+        for key in ('airport_origin_country_code', 'airport_destination_country_code'):
+            data[key] = _to_country_alpha2(data[key])
+        return data
 
     def _is_valid(self, flight: dict) -> bool:
         return all(flight.get(f) is not None for f in ['flight_number', 'time_scheduled_departure',

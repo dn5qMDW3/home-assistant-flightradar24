@@ -124,26 +124,22 @@ def main() -> int:
     # weather, aircraft count, and ground schedule are all produced here.
     def _airport_parsing() -> str:
         processor = AirportProcessor(api)
-        processor.update_airport_info("LHR")
+        state = processor.add_subentry("LHR")
+        processor.update_airport_info()
 
-        assert processor.stats is not None, "stats not populated"
-        assert isinstance(processor.arrivals, list), "arrivals not a list"
-        assert isinstance(processor.departures, list), "departures not a list"
-
-        stats = processor.stats
-        weather = processor.weather
-        count = processor.aircraft_count
-        ground = processor.ground
+        assert state.stats is not None, "stats not populated"
+        assert isinstance(state.arrivals, list), "arrivals not a list"
+        assert isinstance(state.departures, list), "departures not a list"
 
         parts = [
-            f"today arrivals_on_time={stats.arrivals_on_time!r}",
-            f"yesterday={stats.arrivals_on_time_yesterday!r}",
-            f"recent={stats.arrivals_on_time_recent!r}",
-            f"weather.temp={weather.temperature if weather else None!r}",
-            f"aircraft_count.ground={count.ground if count else None!r}",
-            f"ground_schedule={len(ground) if ground is not None else None}",
-            f"arrivals={len(processor.arrivals)}",
-            f"departures={len(processor.departures)}",
+            f"today arrivals_on_time={state.stats.arrivals_on_time!r}",
+            f"yesterday={state.stats.arrivals_on_time_yesterday!r}",
+            f"recent={state.stats.arrivals_on_time_recent!r}",
+            f"weather.temp={state.weather.temperature if state.weather else None!r}",
+            f"aircraft_count.ground={state.aircraft_count.ground if state.aircraft_count else None!r}",
+            f"ground_schedule={len(state.ground) if state.ground is not None else None}",
+            f"arrivals={len(state.arrivals)}",
+            f"departures={len(state.departures)}",
         ]
         return "; ".join(parts)
 

@@ -49,10 +49,18 @@ jobs:
             echo "Tag $VERSION is new — will create release."
           fi
 
-      - name: Create release
+      - name: Zip the integration directory
+        if: steps.tag.outputs.exists == 'false'
+        working-directory: custom_components/flightradar24
+        run: |
+          zip flightradar24.zip -r . \
+            -x '*__pycache__*' '*.pyc' '.DS_Store'
+
+      - name: Create release and attach zip
         if: steps.tag.outputs.exists == 'false'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.manifest.outputs.version }}
           name: ${{ steps.manifest.outputs.version }}
           generate_release_notes: true
+          files: custom_components/flightradar24/flightradar24.zip

@@ -1,7 +1,8 @@
+from __future__ import annotations
 from enum import Enum
-from .client import FlightRadar24API
-from .helper import to_int, to_float, get_value
 from typing import Any
+from .client import FlightRadar24API
+from .helper import get_value, to_float, to_int
 
 
 class ScheduleType(Enum):
@@ -54,197 +55,168 @@ class AirportAircraftCount:
     on_ground_total: int | None = None
 
 
+class AirportState:
+    """All data for a single tracked airport."""
+
+    __slots__ = ("code", "stats", "weather", "aircraft_count", "arrivals", "departures", "ground")
+
+    def __init__(self, code: str) -> None:
+        self.code: str = code.upper()
+        self.stats: AirportStats | None = None
+        self.weather: AirportWeather | None = None
+        self.aircraft_count: AirportAircraftCount | None = None
+        self.arrivals: list[dict[str, Any]] | None = None
+        self.departures: list[dict[str, Any]] | None = None
+        self.ground: list[dict[str, Any]] | None = None
+
+
 class AirportProcessor:
-    __slots__ = (
-        '_client', '_code', '_stats', '_arrivals', '_departures', '_ground',
-        '_weather', '_aircraft_count',
-    )
+    """Tracks zero or more airport subentries. Each subentry is one AirportState."""
+
+    __slots__ = ("_client", "_subentries")
 
     def __init__(self, client: FlightRadar24API) -> None:
         self._client = client
-        self._code: str | None = None
-        self._stats: AirportStats | None = None
-        self._weather: AirportWeather | None = None
-        self._aircraft_count: AirportAircraftCount | None = None
-        self._arrivals: list[dict[str, Any]] | None = None
-        self._departures: list[dict[str, Any]] | None = None
-        self._ground: list[dict[str, Any]] | None = None
+        self._subentries: dict[str, AirportState] = {}
 
     @property
-    def code(self) -> str | None:
-        return self._code
+    def subentry_airports(self) -> dict[str, AirportState]:
+        return self._subentries
 
-    @property
-    def stats(self) -> AirportStats | None:
-        return self._stats
-
-    @property
-    def weather(self) -> AirportWeather | None:
-        return self._weather
-
-    @property
-    def aircraft_count(self) -> AirportAircraftCount | None:
-        return self._aircraft_count
-
-    @property
-    def arrivals(self) -> list[dict[str, Any]]:
-        return self._arrivals
-
-    @property
-    def departures(self) -> list[dict[str, Any]]:
-        return self._departures
-
-    @property
-    def ground(self) -> list[dict[str, Any]] | None:
-        return self._ground
-
-    def set_track(self, code: str) -> None:
+    def add_subentry(self, code: str) -> AirportState:
         code = code.upper()
-        self.update_airport_info(code)
-        self._code = code
+        state = self._subentries.get(code)
+        if state is None:
+            state = AirportState(code)
+            self._subentries[code] = state
+        return state
 
-    def restore_code(self, code: str) -> None:
-        code = code.upper()
-        self._code = code
+    def remove_subentry(self, code: str) -> None:
+        self._subentries.pop(code.upper(), None)
 
-    def remove_track(self) -> None:
-        self._code = None
-        self._stats = None
-        self._weather = None
-        self._aircraft_count = None
-        self._arrivals = None
-        self._departures = None
-        self._ground = None
+    def update_airport_info(self) -> None:
+        """Fetch and populate data for every subentry airport (coordinator tick)."""
+        for state in self._subentries.values():
+            self._fill_state(state)
 
-    def update_airport_info(self, code: str = None) -> None:
-        if not self._code and not code:
-            return
+    def _fill_state(self, state: AirportState) -> None:
+        data = get_value(self._client.get_airport_details(state.code), ["airport", "pluginData"])
+        state.stats = self._parse_stats(data)
+        state.arrivals = self._parse_schedule(
+            ScheduleType.ARRIVAL, get_value(data, ["schedule", "arrivals", "data"])
+        )
+        state.departures = self._parse_schedule(
+            ScheduleType.DEPARTURE, get_value(data, ["schedule", "departures", "data"])
+        )
+        state.ground = self._parse_ground(get_value(data, ["schedule", "ground", "data"]))
+        state.weather = self._parse_weather(get_value(data, ["weather"]))
+        state.aircraft_count = self._parse_aircraft_count(get_value(data, ["aircraftCount"]))
 
-        data = get_value(self._client.get_airport_details(self._code or code), ['airport', 'pluginData'])
-        self._stats = AirportStats()
-        stats = get_value(data, ['details', 'stats', 'arrivals'])
-        self._stats.arrivals_on_time = to_int(get_value(stats, ['today', 'quantity', 'onTime']))
-        self._stats.arrivals_delayed = to_int(get_value(stats, ['today', 'quantity', 'delayed']))
-        self._stats.arrivals_canceled = to_int(get_value(stats, ['today', 'quantity', 'canceled']))
-        self._stats.arrivals_delay_average = to_int(get_value(stats, ['delayAvg']))
-        self._stats.arrivals_delay_index = to_float(get_value(stats, ['delayIndex']))
-        self._stats.arrivals_on_time_yesterday = to_int(get_value(stats, ['yesterday', 'quantity', 'onTime']))
-        self._stats.arrivals_delayed_yesterday = to_int(get_value(stats, ['yesterday', 'quantity', 'delayed']))
-        self._stats.arrivals_canceled_yesterday = to_int(get_value(stats, ['yesterday', 'quantity', 'canceled']))
-        self._stats.arrivals_on_time_recent = to_int(get_value(stats, ['recent', 'quantity', 'onTime']))
-        self._stats.arrivals_delayed_recent = to_int(get_value(stats, ['recent', 'quantity', 'delayed']))
-        self._stats.arrivals_canceled_recent = to_int(get_value(stats, ['recent', 'quantity', 'canceled']))
-        stats = get_value(data, ['details', 'stats', 'departures'])
-        self._stats.departures_on_time = to_int(get_value(stats, ['today', 'quantity', 'onTime']))
-        self._stats.departures_delayed = to_int(get_value(stats, ['today', 'quantity', 'delayed']))
-        self._stats.departures_canceled = to_int(get_value(stats, ['today', 'quantity', 'canceled']))
-        self._stats.departures_delay_average = to_int(get_value(stats, ['delayAvg']))
-        self._stats.departures_delay_index = to_float(get_value(stats, ['delayIndex']))
-        self._stats.departures_on_time_yesterday = to_int(get_value(stats, ['yesterday', 'quantity', 'onTime']))
-        self._stats.departures_delayed_yesterday = to_int(get_value(stats, ['yesterday', 'quantity', 'delayed']))
-        self._stats.departures_canceled_yesterday = to_int(get_value(stats, ['yesterday', 'quantity', 'canceled']))
-        self._stats.departures_on_time_recent = to_int(get_value(stats, ['recent', 'quantity', 'onTime']))
-        self._stats.departures_delayed_recent = to_int(get_value(stats, ['recent', 'quantity', 'delayed']))
-        self._stats.departures_canceled_recent = to_int(get_value(stats, ['recent', 'quantity', 'canceled']))
+    @staticmethod
+    def _parse_stats(plugin: dict | None) -> AirportStats:
+        stats = AirportStats()
+        for direction, key in (("arrivals", "arrivals"), ("departures", "departures")):
+            block = get_value(plugin, ["details", "stats", key]) or {}
+            setattr(stats, f"{direction}_on_time", to_int(get_value(block, ["today", "quantity", "onTime"])))
+            setattr(stats, f"{direction}_delayed", to_int(get_value(block, ["today", "quantity", "delayed"])))
+            setattr(stats, f"{direction}_canceled", to_int(get_value(block, ["today", "quantity", "canceled"])))
+            setattr(stats, f"{direction}_delay_average", to_int(get_value(block, ["delayAvg"])))
+            setattr(stats, f"{direction}_delay_index", to_float(get_value(block, ["delayIndex"])))
+            for period in ("yesterday", "recent"):
+                for bucket, attr in (("onTime", "on_time"), ("delayed", "delayed"), ("canceled", "canceled")):
+                    setattr(
+                        stats,
+                        f"{direction}_{attr}_{period}",
+                        to_int(get_value(block, [period, "quantity", bucket])),
+                    )
+        return stats
 
-        self._update_schedule(ScheduleType.ARRIVAL, get_value(data, ['schedule', 'arrivals', 'data']))
-        self._update_schedule(ScheduleType.DEPARTURE, get_value(data, ['schedule', 'departures', 'data']))
-        self._update_ground(get_value(data, ['schedule', 'ground', 'data']))
-        self._update_weather(get_value(data, ['weather']))
-        self._update_aircraft_count(get_value(data, ['aircraftCount']))
-
-    def _update_ground(self, data: list | None) -> None:
+    @staticmethod
+    def _parse_weather(data: dict | None) -> AirportWeather | None:
         if not data:
-            self._ground = [] if data == [] else None
-            return
-        flights: list[dict[str, Any]] = []
-        for i, item in enumerate(data):
-            if i == 50:
-                break
-            item = get_value(item, ['flight'])
-            flights.append({
-                'flight_id': get_value(item, ['identification', 'id']),
-                'flight_number': get_value(item, ['identification', 'number', 'default']),
-                'callsign': get_value(item, ['identification', 'callsign']),
-                'aircraft_code': get_value(item, ['aircraft', 'model', 'code']),
-                'aircraft_model': get_value(item, ['aircraft', 'model', 'text']),
-                'aircraft_registration': get_value(item, ['aircraft', 'registration']),
-                'aircraft_hex': get_value(item, ['aircraft', 'hex']),
-                'aircraft_country_code': get_value(item, ['aircraft', 'country', 'code']),
-                'airline': get_value(item, ['airline', 'name']),
-                'airline_short': get_value(item, ['airline', 'short']),
-                'airline_iata': get_value(item, ['airline', 'code', 'iata']),
-                'airline_icao': get_value(item, ['airline', 'code', 'icao']),
-                'owner': get_value(item, ['owner', 'name']),
-                'on_ground_since': to_int(get_value(item, ['aircraft', 'onGroundUpdate'])),
-                'on_ground_hours': to_float(get_value(item, ['aircraft', 'hoursDiff'])),
-                'on_ground_seconds': to_int(get_value(item, ['aircraft', 'timeDiff'])),
-            })
-        self._ground = flights
-
-    def _update_weather(self, data: dict | None) -> None:
-        if not data:
-            self._weather = None
-            return
+            return None
         weather = AirportWeather()
-        weather.temperature = to_float(get_value(data, ['temp', 'celsius']))
-        weather.dewpoint = to_float(get_value(data, ['dewpoint', 'celsius']))
-        weather.wind_speed = to_float(get_value(data, ['wind', 'speed', 'kts']))
-        weather.wind_direction = to_int(get_value(data, ['wind', 'direction', 'degree']))
-        weather.pressure = to_float(get_value(data, ['pressure', 'hpa']))
-        weather.humidity = to_int(get_value(data, ['humidity']))
-        weather.visibility = to_float(get_value(data, ['sky', 'visibility', 'km']))
-        weather.condition = get_value(data, ['sky', 'condition', 'text'])
-        weather.metar = get_value(data, ['metar'])
-        weather.flight_category = get_value(data, ['flight', 'category'])
-        self._weather = weather
+        weather.temperature = to_float(get_value(data, ["temp", "celsius"]))
+        weather.dewpoint = to_float(get_value(data, ["dewpoint", "celsius"]))
+        weather.wind_speed = to_float(get_value(data, ["wind", "speed", "kts"]))
+        weather.wind_direction = to_int(get_value(data, ["wind", "direction", "degree"]))
+        weather.pressure = to_float(get_value(data, ["pressure", "hpa"]))
+        weather.humidity = to_int(get_value(data, ["humidity"]))
+        weather.visibility = to_float(get_value(data, ["sky", "visibility", "km"]))
+        weather.condition = get_value(data, ["sky", "condition", "text"])
+        weather.metar = get_value(data, ["metar"])
+        weather.flight_category = get_value(data, ["flight", "category"])
+        return weather
 
-    def _update_aircraft_count(self, data: dict | None) -> None:
+    @staticmethod
+    def _parse_aircraft_count(data: dict | None) -> AirportAircraftCount | None:
         if not data:
-            self._aircraft_count = None
-            return
+            return None
         count = AirportAircraftCount()
-        count.ground = to_int(get_value(data, ['ground']))
-        count.on_ground_visible = to_int(get_value(data, ['onGround', 'visible']))
-        count.on_ground_total = to_int(get_value(data, ['onGround', 'total']))
-        self._aircraft_count = count
+        count.ground = to_int(get_value(data, ["ground"]))
+        count.on_ground_visible = to_int(get_value(data, ["onGround", "visible"]))
+        count.on_ground_total = to_int(get_value(data, ["onGround", "total"]))
+        return count
 
-    def _update_schedule(self, schedule: ScheduleType, data: list) -> None:
-        flights = []
-        airport = 'origin' if schedule == ScheduleType.ARRIVAL else 'destination'
-        i = 0
-        for item in data:
-            i += 1
-            item = get_value(item, ['flight'])
+    @staticmethod
+    def _parse_ground(data: list | None) -> list[dict[str, Any]] | None:
+        if data is None:
+            return None
+        flights: list[dict[str, Any]] = []
+        for item in (data or [])[:50]:
+            item = get_value(item, ["flight"])
             flights.append({
-                'status_text': get_value(item, ['status', 'text']),
-                'status': get_value(item, ['status', 'generic', 'status', 'text']),
-                'flight_id': get_value(item, ['identification', 'id']),
-                'flight_number': get_value(item, ['identification', 'number', 'default']),
-                'callsign': get_value(item, ['identification', 'callsign']),
-                'aircraft_code': get_value(item, ['aircraft', 'model', 'code']),
-                'aircraft_model': get_value(item, ['aircraft', 'model', 'text']),
-                'aircraft_registration': get_value(item, ['aircraft', 'registration']),
-                'airline': get_value(item, ['airline', 'name']),
-                'airline_short': get_value(item, ['airline', 'short']),
-                'airline_iata': get_value(item, ['airline', 'code', 'iata']),
-                'airline_icao': get_value(item, ['airline', 'code', 'icao']),
-                'airport_name': get_value(item, ['airport', airport, 'name']),
-                'airport_code_iata': get_value(item, ['airport', airport, 'code', 'iata']),
-                'airport_code_icao': get_value(item, ['airport', airport, 'code', 'icao']),
-                'airport_country_name': get_value(item, ['airport', airport, 'position', 'country', 'name']),
-                'airport_country_code': get_value(item, ['airport', airport, 'position', 'country', 'code']),
-                'airport_city': get_value(item, ['airport', airport, 'position', 'region', 'city']),
-                'time_scheduled_departure': get_value(item, ['time', 'scheduled', 'departure']),
-                'time_scheduled_arrival': get_value(item, ['time', 'scheduled', 'arrival']),
-                'time_real_departure': get_value(item, ['time', 'real', 'departure']),
-                'time_real_arrival': get_value(item, ['time', 'real', 'arrival']),
-                'time_estimated_departure': get_value(item, ['time', 'estimated', 'departure']),
-                'time_estimated_arrival': get_value(item, ['time', 'estimated', 'arrival']),
+                "flight_id": get_value(item, ["identification", "id"]),
+                "flight_number": get_value(item, ["identification", "number", "default"]),
+                "callsign": get_value(item, ["identification", "callsign"]),
+                "aircraft_code": get_value(item, ["aircraft", "model", "code"]),
+                "aircraft_model": get_value(item, ["aircraft", "model", "text"]),
+                "aircraft_registration": get_value(item, ["aircraft", "registration"]),
+                "aircraft_hex": get_value(item, ["aircraft", "hex"]),
+                "aircraft_country_code": get_value(item, ["aircraft", "country", "code"]),
+                "airline": get_value(item, ["airline", "name"]),
+                "airline_short": get_value(item, ["airline", "short"]),
+                "airline_iata": get_value(item, ["airline", "code", "iata"]),
+                "airline_icao": get_value(item, ["airline", "code", "icao"]),
+                "owner": get_value(item, ["owner", "name"]),
+                "on_ground_since": to_int(get_value(item, ["aircraft", "onGroundUpdate"])),
+                "on_ground_hours": to_float(get_value(item, ["aircraft", "hoursDiff"])),
+                "on_ground_seconds": to_int(get_value(item, ["aircraft", "timeDiff"])),
             })
-            if i == 50:
-                break
-        if schedule == ScheduleType.ARRIVAL:
-            self._arrivals = flights
-        else:
-            self._departures = flights
+        return flights
+
+    @staticmethod
+    def _parse_schedule(schedule: ScheduleType, data: list | None) -> list[dict[str, Any]]:
+        if not data:
+            return []
+        airport = "origin" if schedule == ScheduleType.ARRIVAL else "destination"
+        return [
+            {
+                "status_text": get_value(flight, ["status", "text"]),
+                "status": get_value(flight, ["status", "generic", "status", "text"]),
+                "flight_id": get_value(flight, ["identification", "id"]),
+                "flight_number": get_value(flight, ["identification", "number", "default"]),
+                "callsign": get_value(flight, ["identification", "callsign"]),
+                "aircraft_code": get_value(flight, ["aircraft", "model", "code"]),
+                "aircraft_model": get_value(flight, ["aircraft", "model", "text"]),
+                "aircraft_registration": get_value(flight, ["aircraft", "registration"]),
+                "airline": get_value(flight, ["airline", "name"]),
+                "airline_short": get_value(flight, ["airline", "short"]),
+                "airline_iata": get_value(flight, ["airline", "code", "iata"]),
+                "airline_icao": get_value(flight, ["airline", "code", "icao"]),
+                "airport_name": get_value(flight, ["airport", airport, "name"]),
+                "airport_code_iata": get_value(flight, ["airport", airport, "code", "iata"]),
+                "airport_code_icao": get_value(flight, ["airport", airport, "code", "icao"]),
+                "airport_country_name": get_value(flight, ["airport", airport, "position", "country", "name"]),
+                "airport_country_code": get_value(flight, ["airport", airport, "position", "country", "code"]),
+                "airport_city": get_value(flight, ["airport", airport, "position", "region", "city"]),
+                "time_scheduled_departure": get_value(flight, ["time", "scheduled", "departure"]),
+                "time_scheduled_arrival": get_value(flight, ["time", "scheduled", "arrival"]),
+                "time_real_departure": get_value(flight, ["time", "real", "departure"]),
+                "time_real_arrival": get_value(flight, ["time", "real", "arrival"]),
+                "time_estimated_departure": get_value(flight, ["time", "estimated", "departure"]),
+                "time_estimated_arrival": get_value(flight, ["time", "estimated", "arrival"]),
+            }
+            for item in data[:50]
+            for flight in [get_value(item, ["flight"])]
+        ]
