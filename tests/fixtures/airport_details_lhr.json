@@ -1,0 +1,77 @@
+{
+  "airport": {
+    "pluginData": {
+      "details": {
+        "name": "London Heathrow Airport",
+        "code": {"iata": "LHR", "icao": "EGLL"},
+        "stats": {
+          "arrivals": {
+            "delayIndex": 0.35,
+            "delayAvg": 18,
+            "today":     {"quantity": {"onTime": 248, "delayed": 64, "canceled": 3}},
+            "yesterday": {"quantity": {"onTime": 577, "delayed": 102, "canceled": 5}},
+            "recent":    {"quantity": {"onTime": 55,  "delayed": 12,  "canceled": 1}}
+          },
+          "departures": {
+            "delayIndex": 0.42,
+            "delayAvg": 21,
+            "today":     {"quantity": {"onTime": 219, "delayed": 71, "canceled": 4}},
+            "yesterday": {"quantity": {"onTime": 512, "delayed": 98, "canceled": 6}},
+            "recent":    {"quantity": {"onTime": 49,  "delayed": 14,  "canceled": 0}}
+          }
+        }
+      },
+      "weather": {
+        "metar": "EGLL 170720Z 27015KT 9999 BKN025 16/10 Q1013",
+        "temp":     {"celsius": 16},
+        "dewpoint": {"celsius": 10},
+        "pressure": {"hpa": 1013},
+        "humidity": 68,
+        "wind":     {"speed": {"kts": 15}, "direction": {"degree": 270}},
+        "sky":      {"visibility": {"km": 10}, "condition": {"text": "Broken clouds"}},
+        "flight":   {"category": "VFR"}
+      },
+      "aircraftCount": {
+        "ground": 159,
+        "onGround": {"visible": 124, "total": 159}
+      },
+      "schedule": {
+        "arrivals":   {"data": [
+          {"flight": {
+            "identification": {"id": "abc", "number": {"default": "BA117"}, "callsign": "SHT1A"},
+            "status":         {"text": "Landed", "generic": {"status": {"text": "arrived"}}},
+            "aircraft":       {"model": {"code": "B772", "text": "Boeing 777"}, "registration": "G-YMMP"},
+            "airline":        {"name": "British Airways", "short": "BA", "code": {"iata": "BA", "icao": "BAW"}},
+            "airport":        {"origin": {
+              "name": "John F. Kennedy",
+              "code": {"iata": "JFK", "icao": "KJFK"},
+              "position": {"country": {"name": "United States", "code": "US"}, "region": {"city": "New York"}}
+            }},
+            "time":           {
+              "scheduled": {"departure": 1700000000, "arrival": 1700030000},
+              "real":      {"departure": 1700000100, "arrival": 1700029700},
+              "estimated": {"departure": null, "arrival": null}
+            }
+          }}
+        ]},
+        "departures": {"data": []},
+        "ground":     {"data": [
+          {"flight": {
+            "identification": {"id": "xyz", "number": {"default": "BA201"}, "callsign": "SHT3B"},
+            "aircraft": {
+              "model": {"code": "A320", "text": "Airbus A320"},
+              "registration": "G-EUUY",
+              "hex": "406B7A",
+              "country": {"code": "GB"},
+              "onGroundUpdate": 1700010000,
+              "hoursDiff": 2.5,
+              "timeDiff": 9000
+            },
+            "airline": {"name": "British Airways", "short": "BA",  "code": {"iata": "BA", "icao": "BAW"}},
+            "owner":   {"name": "British Airways"}
+          }}
+        ]}
+      }
+    }
+  }
+}

@@ -391,8 +391,11 @@ scripts:
 
 ```bash
 # Lint + byte-compile
-.venv/bin/python -m flake8 custom_components scripts
-.venv/bin/python -m compileall -q custom_components/flightradar24 scripts
+.venv/bin/python -m flake8 custom_components scripts tests
+.venv/bin/python -m compileall -q custom_components/flightradar24 scripts tests
+
+# Unit tests (offline, no network)
+.venv/bin/pytest tests/ -v
 
 # Live smoke test (authed checks run only if creds are in env)
 .venv/bin/python scripts/verify_client.py
@@ -401,6 +404,17 @@ scripts:
 FR24_USER='you@example.com' FR24_PASSWORD='...' \
     .venv/bin/python scripts/verify_client.py
 ```
+
+### Unit tests
+
+`tests/` covers parsing logic against saved FR24 response fixtures — no
+network, no Home Assistant required. Run with `pytest tests/ -v`. CI runs
+this on every push via `.github/workflows/codechecker.yml` alongside flake8.
+
+The `api/` subpackage was deliberately decoupled from Home Assistant
+imports (event name constants moved from `const.py` to `api/event.py`) so
+tests can exercise the parsers, `Flight`/`Entity` classes, and
+`get_bounds_by_point` without stubbing HA.
 
 > [!CAUTION]
 > `scripts/verify_client.py` intentionally attempts a login with bogus

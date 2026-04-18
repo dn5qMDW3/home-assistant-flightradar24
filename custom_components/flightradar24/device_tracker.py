@@ -19,15 +19,15 @@ async def async_setup_entry(
     coordinator: FlightRadar24Coordinator = entry.runtime_data
 
     if coordinator.enable_tracker:
-        tracked = FlightRadar24Tracker(coordinator)
-        async_add_entities([tracked])
+        tracker = FlightRadar24Tracker(coordinator)
+        async_add_entities([tracker])
 
         @callback
-        def coordinator_updated() -> None:
-            _update_items(coordinator, tracked)
+        def _pick_flight() -> None:
+            _update_items(coordinator, tracker)
 
-        entry.async_on_unload(coordinator.async_add_listener(coordinator_updated))
-        coordinator_updated()
+        entry.async_on_unload(coordinator.async_add_listener(_pick_flight))
+        _pick_flight()
 
     for subentry in entry.subentries.values():
         if subentry.subentry_type != SUBENTRY_AIRCRAFT:
@@ -39,55 +39,63 @@ async def async_setup_entry(
 
 
 @callback
-def _update_items(coordinator: FlightRadar24Coordinator, tracked: FlightRadar24Tracker) -> None:
+def _update_items(coordinator: FlightRadar24Coordinator, tracker: FlightRadar24Tracker) -> None:
+    """Pick the next available 'live' flight for the legacy single-tracker slot."""
     if not coordinator.enable_tracker:
         return
-
-    if not tracked.info:
+    if not tracker.info:
         for flight in coordinator.flight.tracked.values():
             if flight.get("tracked_type") == "live":
-                tracked.info = flight
-                break
+                tracker.info = flight
+                return
         return
-
-    flight = coordinator.flight.tracked.get(tracked.info["id"])
-    if flight and flight.get("tracked_type") == "live":
-        tracked.info = flight
-    else:
-        tracked.info = {}
+    flight = coordinator.flight.tracked.get(tracker.info["id"])
+    tracker.info = flight if flight and flight.get("tracked_type") == "live" else {}
 
 
-class FlightRadar24Tracker(FlightRadar24Entity, TrackerEntity):
+class _FlightTrackerBase(FlightRadar24Entity, TrackerEntity):
+    """Shared plumbing for trackers that expose one flight's latitude/longitude."""
+
     _attr_name = None
     _attr_icon = "mdi:airplane"
 
-    def __init__(self, coordinator: FlightRadar24Coordinator) -> None:
-        super().__init__(coordinator, DOMAIN)
-        self._attr_unique_id = f"{coordinator.unique_id}_{DOMAIN}"
-        self.info: dict[str, Any] = {}
+    def _flight(self) -> dict[str, Any] | None:
+        """Return the flight dict this tracker currently follows, or None."""
+        raise NotImplementedError
 
     @property
     def source_type(self) -> SourceType:
         return SourceType.GPS
 
     @property
-    def extra_state_attributes(self) -> dict[str, Any]:
-        return self.info
-
-    @property
     def latitude(self) -> float | None:
-        return self.info.get("latitude")
+        flight = self._flight()
+        return flight.get("latitude") if flight else None
 
     @property
     def longitude(self) -> float | None:
-        return self.info.get("longitude")
+        flight = self._flight()
+        return flight.get("longitude") if flight else None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        return self._flight() or {}
 
 
-class FlightRadar24AircraftTracker(FlightRadar24Entity, TrackerEntity):
-    """Device tracker following a specific aircraft subentry's registration."""
+class FlightRadar24Tracker(_FlightTrackerBase):
+    """Legacy single-slot tracker: follows the first 'live' tracked flight."""
 
-    _attr_name = None
-    _attr_icon = "mdi:airplane"
+    def __init__(self, coordinator: FlightRadar24Coordinator) -> None:
+        super().__init__(coordinator, DOMAIN)
+        self._attr_unique_id = f"{coordinator.unique_id}_{DOMAIN}"
+        self.info: dict[str, Any] = {}
+
+    def _flight(self) -> dict[str, Any] | None:
+        return self.info or None
+
+
+class FlightRadar24AircraftTracker(_FlightTrackerBase):
+    """Per-aircraft-subentry tracker: follows one specific registration."""
 
     def __init__(self, coordinator: FlightRadar24Coordinator, registration: str) -> None:
         super().__init__(coordinator, f"aircraft_{registration}_tracker")
@@ -107,21 +115,3 @@ class FlightRadar24AircraftTracker(FlightRadar24Entity, TrackerEntity):
             ):
                 return entry
         return None
-
-    @property
-    def source_type(self) -> SourceType:
-        return SourceType.GPS
-
-    @property
-    def latitude(self) -> float | None:
-        flight = self._flight()
-        return flight.get("latitude") if flight else None
-
-    @property
-    def longitude(self) -> float | None:
-        flight = self._flight()
-        return flight.get("longitude") if flight else None
-
-    @property
-    def extra_state_attributes(self) -> dict[str, Any]:
-        return self._flight() or {}

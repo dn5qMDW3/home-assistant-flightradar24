@@ -1,0 +1,62 @@
+{
+  "identification": {
+    "id": "3f43cd65",
+    "number": {"default": "BA117"},
+    "callsign": "SHT1A"
+  },
+  "aircraft": {
+    "registration": "G-YMMP",
+    "model": {"text": "Boeing 777-236", "code": "B772"},
+    "images": {
+      "thumbnails": [{"src": "https://cdn.fr24/thumb1.jpg"}],
+      "medium":     [{"src": "https://cdn.fr24/medium1.jpg"}],
+      "large":      [{"src": "https://cdn.fr24/large1.jpg"}]
+    }
+  },
+  "airline": {
+    "name": "British Airways",
+    "short": "BA",
+    "code": {"iata": "BA", "icao": "BAW"}
+  },
+  "airport": {
+    "origin": {
+      "name": "London Heathrow",
+      "code": {"iata": "LHR", "icao": "EGLL"},
+      "position": {
+        "latitude": 51.47,
+        "longitude": -0.4543,
+        "country": {"name": "United Kingdom", "code": "GBR"},
+        "region":  {"city": "London"}
+      },
+      "timezone": {"offset": 0, "abbr": "GMT"},
+      "info": {"terminal": "5"}
+    },
+    "destination": {
+      "name": "John F. Kennedy International",
+      "code": {"iata": "JFK", "icao": "KJFK"},
+      "position": {
+        "latitude": 40.6413,
+        "longitude": -73.7781,
+        "country": {"name": "United States", "code": "USA"},
+        "region":  {"city": "New York"}
+      },
+      "timezone": {"offset": -14400, "abbr": "EDT"},
+      "info": {"terminal": "8"}
+    }
+  },
+  "time": {
+    "scheduled": {"departure": 1700000000, "arrival": 1700030000},
+    "real":      {"departure": 1700000100, "arrival": null},
+    "estimated": {"departure": null,       "arrival": 1700029700}
+  },
+  "ems": {
+    "mach": 0.82,
+    "ias": 320,
+    "tas": 480,
+    "oat": -52,
+    "wind_dir": 240,
+    "wind_speed": 85,
+    "agps": 37000,
+    "mcp": 38000
+  }
+}

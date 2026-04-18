@@ -2,15 +2,15 @@ from typing import Any
 from enum import Enum
 from .client import Entity, Flight, FlightRadar24API
 from .helper import to_int, get_value
-from .event import EventManager
-from ..const import (
-    EVENT_ENTRY,
-    EVENT_EXIT,
+from .event import (
     EVENT_AREA_LANDED,
     EVENT_AREA_TOOK_OFF,
+    EVENT_ENTRY,
+    EVENT_EXIT,
+    EVENT_MOST_TRACKED_NEW,
     EVENT_TRACKED_LANDED,
     EVENT_TRACKED_TOOK_OFF,
-    EVENT_MOST_TRACKED_NEW,
+    EventManager,
 )
 import pycountry
 
@@ -188,56 +188,65 @@ class FlightProcessor:
     def update_flights_tracked(self) -> None:
         if not self._tracked:
             return
-
-        reg_numbers = []
-        current_flights = []
-        current: dict[str, dict[str, Any]] = {}
-        for flight in self._tracked:
-            if self._tracked[flight].get('aircraft_registration'):
-                reg_numbers.append(self._tracked[flight].get('aircraft_registration'))
-
-        if reg_numbers:
-            flights = self._client.get_flights(registration=','.join(reg_numbers))
-            for obj in flights:
-                self._update_flights_data(obj, current, self._tracked, FlightType.TRACKED)
-                current[obj.id]['tracked_type'] = 'live'
-                if current[obj.id].get('flight_number'):
-                    current_flights.append(current[obj.id].get('flight_number'))
-                if current[obj.id].get('callsign'):
-                    current_flights.append(current[obj.id].get('callsign'))
-
-        current_regs = {
-            v.get('aircraft_registration') for v in current.values() if v.get('aircraft_registration')
-        }
-        remains = self._tracked.keys() - current.keys()
-        if remains:
-            for flight_id in remains:
-                entry = self._tracked[flight_id]
-                flight_number = entry.get('flight_number')
-                if flight_number and flight_number in current_flights:
-                    continue
-                callsign = entry.get('callsign')
-                if not flight_number and callsign and callsign in current_flights:
-                    continue
-                number = flight_number or callsign
-                if not number:
-                    # Registration-only placeholder (aircraft not currently airborne).
-                    # Preserve across ticks unless a live flight for this registration
-                    # is already in the current set.
-                    reg = entry.get('aircraft_registration')
-                    if reg and reg not in current_regs:
-                        current[flight_id] = entry
-                        current[flight_id]['tracked_type'] = 'not_airborne'
-                    continue
-                size = current.__len__()
-                self._find_flight(current, number)
-                if size != current.__len__():
-                    current_flights.append(number)
-                else:
-                    current[flight_id] = entry
-                    current[flight_id]['tracked_type'] = 'not_found'
-
+        current = self._fetch_tracked_live()
+        self._reconcile_tracked_remainder(current)
         self._tracked = current
+
+    def _fetch_tracked_live(self) -> dict[str, dict[str, Any]]:
+        """Ask FR24 for live data on every registration we know about."""
+        current: dict[str, dict[str, Any]] = {}
+        registrations = [
+            entry['aircraft_registration']
+            for entry in self._tracked.values()
+            if entry.get('aircraft_registration')
+        ]
+        if not registrations:
+            return current
+        for obj in self._client.get_flights(registration=','.join(registrations)):
+            self._update_flights_data(obj, current, self._tracked, FlightType.TRACKED)
+            if obj.id in current:
+                current[obj.id]['tracked_type'] = 'live'
+        return current
+
+    def _reconcile_tracked_remainder(self, current: dict[str, dict[str, Any]]) -> None:
+        """For tracked entries not matched live, preserve placeholders or re-search."""
+        live_identifiers: set[str] = {
+            ident for entry in current.values()
+            for ident in (entry.get('flight_number'), entry.get('callsign'))
+            if ident
+        }
+        live_registrations: set[str] = {
+            entry['aircraft_registration'] for entry in current.values()
+            if entry.get('aircraft_registration')
+        }
+
+        for flight_id in self._tracked.keys() - current.keys():
+            entry = self._tracked[flight_id]
+            flight_number = entry.get('flight_number')
+            callsign = entry.get('callsign')
+
+            # Already represented by a live flight with matching number/callsign?
+            if flight_number and flight_number in live_identifiers:
+                continue
+            if not flight_number and callsign and callsign in live_identifiers:
+                continue
+
+            number = flight_number or callsign
+            if not number:
+                # Registration-only placeholder: preserve unless a live flight
+                # with the same registration is already in current.
+                reg = entry.get('aircraft_registration')
+                if reg and reg not in live_registrations:
+                    current[flight_id] = {**entry, 'tracked_type': 'not_airborne'}
+                continue
+
+            # Re-search by number/callsign; if still not found, keep as not_found.
+            before = len(current)
+            self._find_flight(current, number)
+            if len(current) > before:
+                live_identifiers.add(number)
+            else:
+                current[flight_id] = {**entry, 'tracked_type': 'not_found'}
 
     def _find_flight(self, current: dict[str, dict[str, Any]], number: str) -> None:
         def process_search_flight(objects: dict, search: str) -> dict | None:
@@ -320,48 +329,64 @@ class FlightProcessor:
         self._most_tracked = current
         self._event_manager.add_events(EVENT_MOST_TRACKED_NEW, entries)
 
-    def _update_flights_data(self,
-                             obj: Flight,
-                             current: dict[str, dict[str, Any]],
-                             tracked: dict[str, dict[str, Any]],
-                             sensor_type: FlightType | None = None,
-                             ) -> None:
-        last_position = tracked[obj.id].get('on_ground') if tracked is not None and obj.id in tracked else None
-        if (tracked is not None and obj.id in tracked and self._is_valid(tracked[obj.id])
-                and to_int(last_position) == obj.on_ground):
-            flight = tracked[obj.id]
-        else:
-            data = self._client.get_flight_details(obj)
-            flight = self._get_flight_data(data)
-        if flight is not None:
-            current[flight['id']] = flight
-            flight['latitude'] = obj.latitude
-            flight['longitude'] = obj.longitude
-            flight['altitude'] = obj.altitude
-            flight['heading'] = obj.heading
-            flight['ground_speed'] = obj.ground_speed
-            flight['squawk'] = obj.squawk
-            flight['vertical_speed'] = obj.vertical_speed
-            new_distance = obj.get_distance_from(self._point)
-            flight['distance'] = new_distance
-            flight['closest_distance'] = min(new_distance, flight.get('closest_distance', new_distance))
-            flight['on_ground'] = obj.on_ground
-            self._takeoff_and_landing(flight, last_position, obj.on_ground, sensor_type)
+    def _update_flights_data(
+            self,
+            obj: Flight,
+            current: dict[str, dict[str, Any]],
+            tracked: dict[str, dict[str, Any]] | None,
+            sensor_type: FlightType | None = None,
+    ) -> None:
+        previous = tracked.get(obj.id) if tracked else None
+        last_on_ground = previous.get('on_ground') if previous else None
 
-    def _takeoff_and_landing(self,
-                             flight: dict[str, Any],
-                             last_position, position,
-                             sensor_type: FlightType | None) -> None:
-        last_position = to_int(last_position)
-        position = to_int(position)
-        if sensor_type is None or last_position is None or position is None or last_position == position:
-            return
-        if position == 0:
-            self._event_manager.add_events(EVENT_AREA_TOOK_OFF if FlightType.IN_AREA == sensor_type
-                                           else EVENT_TRACKED_TOOK_OFF, [flight])
+        if previous and self._is_valid(previous) and to_int(last_on_ground) == obj.on_ground:
+            flight = previous
         else:
-            self._event_manager.add_events(EVENT_AREA_LANDED if FlightType.IN_AREA == sensor_type
-                                           else EVENT_TRACKED_LANDED, [flight])
+            flight = self._get_flight_data(self._client.get_flight_details(obj))
+
+        if flight is None:
+            return
+
+        distance = obj.get_distance_from(self._point)
+        flight.update({
+            'latitude': obj.latitude,
+            'longitude': obj.longitude,
+            'altitude': obj.altitude,
+            'heading': obj.heading,
+            'ground_speed': obj.ground_speed,
+            'squawk': obj.squawk,
+            'vertical_speed': obj.vertical_speed,
+            'on_ground': obj.on_ground,
+            'distance': distance,
+            'closest_distance': min(distance, flight.get('closest_distance', distance)),
+        })
+        current[flight['id']] = flight
+        self._takeoff_and_landing(flight, last_on_ground, obj.on_ground, sensor_type)
+
+    # (sensor_type, is_on_ground) → event name
+    _TAKEOFF_LANDING_EVENTS: dict[tuple[FlightType, int], str] = {
+        (FlightType.IN_AREA, 0): EVENT_AREA_TOOK_OFF,
+        (FlightType.IN_AREA, 1): EVENT_AREA_LANDED,
+        (FlightType.TRACKED, 0): EVENT_TRACKED_TOOK_OFF,
+        (FlightType.TRACKED, 1): EVENT_TRACKED_LANDED,
+    }
+
+    def _takeoff_and_landing(
+            self,
+            flight: dict[str, Any],
+            previous: Any,
+            current: Any,
+            sensor_type: FlightType | None,
+    ) -> None:
+        if sensor_type is None:
+            return
+        previous = to_int(previous)
+        current = to_int(current)
+        if previous is None or current is None or previous == current:
+            return
+        event = self._TAKEOFF_LANDING_EVENTS.get((sensor_type, current))
+        if event:
+            self._event_manager.add_events(event, [flight])
 
     def _get_flight_data(self, flight: dict) -> dict[str, Any] | None:
         flight_id = get_value(flight, ['identification', 'id'])
