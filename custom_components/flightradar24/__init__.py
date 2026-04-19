@@ -20,8 +20,6 @@ from .const import (
     CONF_MOST_TRACKED_DEFAULT,
     MAX_ALTITUDE,
     MIN_ALTITUDE,
-    SUBENTRY_AIRCRAFT,
-    SUBENTRY_AIRPORT,
 )
 from .coordinator import FlightRadar24Coordinator
 from .services import async_register_services
@@ -77,23 +75,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: FlightRadar24ConfigEntry
     if entry.data.get(CONF_MOST_TRACKED, CONF_MOST_TRACKED_DEFAULT):
         coordinator.flight.enable_most_tracked()
 
-    # Register airport subentries before the first refresh so their data is
-    # fetched in the same executor burst as the primary airport.
-    for subentry in entry.subentries.values():
-        if subentry.subentry_type == SUBENTRY_AIRPORT:
-            coordinator.airport.add_subentry(subentry.data["code"])
-
     await coordinator.async_config_entry_first_refresh()
     entry.runtime_data = coordinator
-
-    # Aircraft subentries: resolve each registration via flight.add_track
-    # (async because it performs an executor HTTP call via the coordinator).
-    # ``from_subentry=True`` tags the tracking entry so ``clear_tracked`` keeps it.
-    for subentry in entry.subentries.values():
-        if subentry.subentry_type == SUBENTRY_AIRCRAFT:
-            await coordinator.add_flight_track(
-                subentry.data["registration"], from_subentry=True,
-            )
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     entry.async_on_unload(entry.add_update_listener(_async_update_listener))
