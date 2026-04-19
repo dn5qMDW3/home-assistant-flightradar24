@@ -6,6 +6,7 @@ from typing import Any
 from .api.client import Entity, FlightRadar24API
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.device_registry import DeviceInfo
+from homeassistant.config_entries import ConfigEntry
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from .api.airport import AirportProcessor
 from .api.event import Event, EventManager
@@ -20,6 +21,7 @@ class FlightRadar24Coordinator(DataUpdateCoordinator[None]):
     def __init__(
             self,
             hass: HomeAssistant,
+            config_entry: ConfigEntry,
             bounds: str,
             client: FlightRadar24API,
             update_interval: int,
@@ -47,6 +49,7 @@ class FlightRadar24Coordinator(DataUpdateCoordinator[None]):
             logger,
             name=DOMAIN,
             update_interval=timedelta(seconds=update_interval),
+            config_entry=config_entry,
         )
 
     def _is_scanning(self) -> bool:

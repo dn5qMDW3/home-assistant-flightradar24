@@ -63,6 +63,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: FlightRadar24ConfigEntry
 
     coordinator = FlightRadar24Coordinator(
         hass,
+        entry,
         bounds,
         client,
         entry.data[CONF_SCAN_INTERVAL],
