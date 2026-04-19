@@ -100,11 +100,15 @@ extra premium fields (see [Premium login](#premium-login)).
 2. Fill in radius (m), latitude, longitude, and scan interval (s).
 3. Submit.
 
+![Flightradar24 setup dialog](docs/media/setup.png)
+
 After adding the entry you can edit altitude bounds, toggle most-tracked,
 and enter a Flightradar24 username/password under the entry's
 **Configure** button. Airport and aircraft tracking are added afterwards
 via the **Add airport** / **Add aircraft** subentry buttons on the
 integration card.
+
+![Integration card — before adding subentries](docs/media/config1.png)
 
 ## Tracking flights, airports, and aircraft
 
@@ -158,9 +162,9 @@ action:
       registration: "4X-ISR"
 ```
 
-### Flight-not-found feedback
+### Flight-not-found and aircraft-existence feedback
 
-When a flight number can't be resolved:
+When a flight number can't be resolved by `track_flight`:
 
 - Service calls raise `ServiceValidationError` with a translated message
   — HA shows a red toast in the UI.
@@ -178,6 +182,16 @@ When a flight number can't be resolved:
         title: Flightradar24 — flight not found
         message: "Could not track {{ trigger.event.data.number }}."
   ```
+
+`track_aircraft` (service + UI "Add aircraft" flow) additionally validates
+the registration against FR24's search before creating a subentry:
+
+- Unknown registrations raise `ServiceValidationError` with translation
+  key `aircraft_not_found` (service) or show the same message as a form
+  error (UI flow).
+- FR24 search errors / timeouts raise `aircraft_check_failed` so a
+  transient outage is distinguishable from a genuinely unknown tail number
+  — retry after the connection recovers.
 
 ### Search-then-track
 
@@ -347,14 +361,20 @@ Adding / removing airports and aircraft happens via config subentries
 card, or the matching services). Ephemeral flight tracking is done via
 `flightradar24.track_flight` / `untrack_flight` / `clear_tracked`.
 
+![Integration card — after adding aircraft and airport subentries](docs/media/config2.png)
+
 ### Per-aircraft-subentry entities
 
 Each aircraft subentry gets its own device with:
 
-- `sensor.flightradar24_<reg>` — status (`airborne` / `on ground` /
-  `not found` / `unknown`) with the full flight data as attributes.
-- `device_tracker.flightradar24_<reg>_tracker` — GPS-source tracker that
-  follows that specific airframe when airborne.
+- `sensor.flightradar24_<reg>_status` — enum state (`live` /
+  `not_airborne` / `not_found` / `unknown`) with the full flight data as
+  attributes.
+- `device_tracker.flightradar24_<reg>` — GPS-source tracker that follows
+  that specific airframe when airborne. Drops cleanly into Lovelace's
+  Map card:
+
+![Aircraft device_tracker on a Map card](docs/media/map.png)
 
 ### Per-airport-subentry entities
 
