@@ -11,7 +11,14 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 from .api.airport import AirportProcessor
 from .api.event import Event, EventManager
 from .api.flight import FlightProcessor
-from .const import DEFAULT_NAME, DOMAIN, EVENT_FLIGHT_NOT_FOUND, URL
+from .const import (
+    DEFAULT_NAME,
+    DOMAIN,
+    EVENT_FLIGHT_NOT_FOUND,
+    SUBENTRY_AIRCRAFT,
+    SUBENTRY_AIRPORT,
+    URL,
+)
 
 _SCAN_OFF_MESSAGE = "FlightRadar24: API data fetching is OFF"
 
@@ -125,9 +132,50 @@ class FlightRadar24Coordinator(DataUpdateCoordinator[None]):
     async def search_flights(self, query: str) -> dict:
         return await self.hass.async_add_executor_job(self.client.search, query)
 
+    def _sync_subentries(self) -> None:
+        """Reconcile flight._tracked and airport subscriptions against the
+        current set of config subentries. Runs at the start of every refresh.
+
+        Idempotent: missing aircraft placeholders / airport subscriptions are
+        seeded; entries for removed subentries are dropped (only entries
+        flagged ``from_subentry=True`` so ephemeral ``track_flight`` tracks
+        are preserved). Wrapped in a broad except so a malformed subentry
+        does not kill the entire refresh.
+        """
+        try:
+            aircraft_regs: set[str] = set()
+            airport_codes: set[str] = set()
+            for subentry in self.config_entry.subentries.values():
+                if subentry.subentry_type == SUBENTRY_AIRCRAFT:
+                    reg = (subentry.data.get("registration") or "").upper()
+                    if reg:
+                        aircraft_regs.add(reg)
+                        self.flight.ensure_subentry_placeholder(reg)
+                elif subentry.subentry_type == SUBENTRY_AIRPORT:
+                    code = (subentry.data.get("code") or "").upper()
+                    if code:
+                        airport_codes.add(code)
+                        if code not in self.airport.subentry_airports:
+                            self.airport.add_subentry(code)
+
+            stale_ids = [
+                fid for fid, entry in self.flight.tracked.items()
+                if entry.get("from_subentry")
+                and (entry.get("aircraft_registration") or "").upper() not in aircraft_regs
+            ]
+            for fid in stale_ids:
+                self.flight.tracked.pop(fid, None)
+
+            for code in list(self.airport.subentry_airports.keys()):
+                if code not in airport_codes:
+                    self.airport.remove_subentry(code)
+        except Exception as err:  # noqa: BLE001 — never fail a refresh over a bad subentry
+            self.logger.warning("FlightRadar24: subentry sync failed: %s", err)
+
     async def _async_update_data(self) -> None:
         if not self.scanning:
             return
+        self._sync_subentries()
         try:
             await asyncio.gather(
                 self.hass.async_add_executor_job(self.flight.update_flights_in_area),
