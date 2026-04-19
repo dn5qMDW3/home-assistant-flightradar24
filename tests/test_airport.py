@@ -109,7 +109,6 @@ class TestParseGround:
         assert entry["callsign"] == "SHT3B"
         assert entry["aircraft_registration"] == "G-EUUY"
         assert entry["aircraft_hex"] == "406B7A"
-        assert entry["aircraft_country_code"] == "GB"
         assert entry["on_ground_since"] == 1700010000
         assert entry["on_ground_hours"] == 2.5
         assert entry["on_ground_seconds"] == 9000
@@ -136,7 +135,6 @@ class TestParseSchedule:
         assert arrivals[0]["flight_number"] == "BA117"
         # origin airport = JFK for an arrival into LHR
         assert arrivals[0]["airport_code_iata"] == "JFK"
-        assert arrivals[0]["airport_country_code"] == "US"
 
     def test_truncates_at_50(self):
         data = [{"flight": {"identification": {"id": str(i)}}} for i in range(100)]

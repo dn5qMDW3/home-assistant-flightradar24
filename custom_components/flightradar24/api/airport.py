@@ -166,12 +166,9 @@ class AirportProcessor:
             "flight_number": get_value(flight, ["identification", "number", "default"]),
             "callsign": get_value(flight, ["identification", "callsign"]),
             "aircraft_code": get_value(flight, ["aircraft", "model", "code"]),
-            "aircraft_model": get_value(flight, ["aircraft", "model", "text"]),
             "aircraft_registration": get_value(flight, ["aircraft", "registration"]),
             "airline": get_value(flight, ["airline", "name"]),
-            "airline_short": get_value(flight, ["airline", "short"]),
             "airline_iata": get_value(flight, ["airline", "code", "iata"]),
-            "airline_icao": get_value(flight, ["airline", "code", "icao"]),
         }
 
     @classmethod
@@ -184,7 +181,6 @@ class AirportProcessor:
             entry = cls._base_flight_dict(flight)
             entry.update({
                 "aircraft_hex": get_value(flight, ["aircraft", "hex"]),
-                "aircraft_country_code": get_value(flight, ["aircraft", "country", "code"]),
                 "owner": get_value(flight, ["owner", "name"]),
                 "on_ground_since": to_int(get_value(flight, ["aircraft", "onGroundUpdate"])),
                 "on_ground_hours": to_float(get_value(flight, ["aircraft", "hoursDiff"])),
@@ -207,16 +203,9 @@ class AirportProcessor:
                 "status": get_value(flight, ["status", "generic", "status", "text"]),
                 "airport_name": get_value(flight, ["airport", airport, "name"]),
                 "airport_code_iata": get_value(flight, ["airport", airport, "code", "iata"]),
-                "airport_code_icao": get_value(flight, ["airport", airport, "code", "icao"]),
-                "airport_country_name": get_value(flight, ["airport", airport, "position", "country", "name"]),
-                "airport_country_code": get_value(flight, ["airport", airport, "position", "country", "code"]),
                 "airport_city": get_value(flight, ["airport", airport, "position", "region", "city"]),
                 "time_scheduled_departure": get_value(flight, ["time", "scheduled", "departure"]),
                 "time_scheduled_arrival": get_value(flight, ["time", "scheduled", "arrival"]),
-                "time_real_departure": get_value(flight, ["time", "real", "departure"]),
-                "time_real_arrival": get_value(flight, ["time", "real", "arrival"]),
-                "time_estimated_departure": get_value(flight, ["time", "estimated", "departure"]),
-                "time_estimated_arrival": get_value(flight, ["time", "estimated", "arrival"]),
             })
             flights.append(entry)
         return flights
