@@ -29,6 +29,7 @@ extra premium fields (see [Premium login](#premium-login)).
 - [Tracking flights, airports, and aircraft](#tracking-flights-airports-and-aircraft)
 - [Architecture](#architecture)
 - [Entities](#entities)
+- [Recorder](#recorder)
 - [Premium login](#premium-login)
 - [Development](#development)
 - [License](#license)
@@ -216,45 +217,6 @@ action:
 > takes off. The subentry survives restarts; the placeholder is
 > reconciled on each coordinator tick.
 
-## Architecture
-
-```mermaid
-flowchart LR
-    CE[Config entry<br/>runtime_data]
-    DUC[FlightRadar24<br/>Coordinator]
-    AC[api/client<br/>vendored]
-    FR[(flightradar24.com)]
-
-    subgraph Processors
-        FP[FlightProcessor]
-        AP[AirportProcessor]
-    end
-
-    subgraph Platforms
-        direction LR
-        S[sensor]
-        BS[binary_sensor]
-        W[weather]
-        DT[device_tracker]
-        SW[switch]
-    end
-
-    CE --> DUC
-    DUC --> FP
-    DUC --> AP
-    FP --> AC
-    AP --> AC
-    AC -->|HTTPS| FR
-    DUC --> Platforms
-```
-
-The coordinator polls on the user-configured `scan_interval` and fans out
-four executor jobs in parallel (`asyncio.gather`): flights in area,
-tracked flights, most-tracked, and airport details. Entities inherit a
-shared `FlightRadar24Entity(CoordinatorEntity)` base so device grouping,
-`has_entity_name`, and `unique_id` formatting stay consistent across
-platforms.
-
 ## Entities
 
 ### Events
@@ -382,6 +344,26 @@ Each airport subentry gets its own device with the **full airport sensor
 set** (today / yesterday / recent stats, schedule lists, aircraft
 counts, weather readings) and one `weather` entity that renders in HA's
 native weather card.
+
+## Recorder
+
+The airport `arrivals`, `departures`, and aircraft-on-ground list sensors
+carry large `flights` attributes (up to 50 flights each, updated on every
+coordinator tick). Recording them in the HA database bloats it quickly
+and is rarely useful — the data is live by nature. Exclude them from the
+recorder in `configuration.yaml` (replace `ber` with your airport's
+IATA/ICAO code):
+
+```yaml
+recorder:
+  exclude:
+    entities:
+      - sensor.flightradar24_ber_airport_arrivals
+      - sensor.flightradar24_ber_airport_departures
+      - sensor.flightradar24_ber_airport_aircraft_on_ground_list
+```
+
+Repeat the three entries for each airport subentry you've added.
 
 ## Premium login
 
