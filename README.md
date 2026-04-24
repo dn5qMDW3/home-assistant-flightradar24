@@ -358,9 +358,9 @@ IATA/ICAO code):
 recorder:
   exclude:
     entities:
-      - sensor.flightradar24_ber_airport_arrivals
-      - sensor.flightradar24_ber_airport_departures
-      - sensor.flightradar24_ber_airport_aircraft_on_ground_list
+      - sensor.flightradar24_airport_arrivals
+      - sensor.flightradar24_airport_departures
+      - sensor.flightradar24_airport_aircraft_on_ground_list
 ```
 
 Repeat the three entries for each airport subentry you've added.
