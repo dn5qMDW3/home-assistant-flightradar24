@@ -2,7 +2,7 @@ from __future__ import annotations
 from logging import getLogger
 from typing import Any, TYPE_CHECKING
 import voluptuous as vol
-from .api.client import FlightRadar24API, LoginError
+from .api.client import FlightRadar24API, FlightRadar24Error, LoginError
 import homeassistant.helpers.config_validation as cv
 from homeassistant.config_entries import (
     ConfigEntry,
@@ -56,6 +56,10 @@ async def _validate_login(hass, username: str, password: str) -> str | None:
     except LoginError as err:
         _LOGGER.warning("FlightRadar24 login failed: %s", err)
         return "login_failed"
+    except FlightRadar24Error as err:
+        # Never surfaced as "check your credentials": FR24 never saw them.
+        _LOGGER.warning("FlightRadar24 login could not be attempted: %s", err)
+        return "login_unavailable"
     return None
 
 

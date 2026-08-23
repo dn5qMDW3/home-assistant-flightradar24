@@ -7,17 +7,23 @@ from .api import FlightRadar24API
 from .entities import Entity, Flight
 from .errors import (
     AirportNotFoundError,
+    BlockedError,
     CloudflareError,
     FlightRadar24Error,
     LoginError,
+    RateLimitError,
+    TransportError,
 )
 
 __all__ = [
     "AirportNotFoundError",
+    "BlockedError",
     "CloudflareError",
     "Entity",
     "Flight",
     "FlightRadar24API",
     "FlightRadar24Error",
     "LoginError",
+    "RateLimitError",
+    "TransportError",
 ]

@@ -44,6 +44,7 @@ class FlightRadar24Coordinator(DataUpdateCoordinator[None]):
         self.flight = FlightProcessor(client, self.event_manager, min_altitude, max_altitude, point, bounds)
         self.airport = AirportProcessor(client)
         self.scanning: bool = True
+        self._task_errors: dict[str, str] = {}
         self.device_info = DeviceInfo(
             configuration_url=URL,
             identifiers={(DOMAIN, self.unique_id)},
@@ -172,19 +173,59 @@ class FlightRadar24Coordinator(DataUpdateCoordinator[None]):
         except Exception as err:  # noqa: BLE001 — never fail a refresh over a bad subentry
             self.logger.warning("FlightRadar24: subentry sync failed: %s", err)
 
+    def _report(self, task: str, err: BaseException | None) -> None:
+        """Log a task's outcome, but only when it changes.
+
+        A refresh runs every few seconds, so an endpoint that is persistently
+        unreachable would otherwise fill the log with the same line forever.
+        Recoveries are logged too, so the log still shows when a task healed.
+        """
+        message = f"{type(err).__name__}: {err}" if err is not None else None
+        if self._task_errors.get(task) == message:
+            return
+        if message is None:
+            self.logger.info("FlightRadar24: %s recovered", task)
+            self._task_errors.pop(task, None)
+            return
+        self.logger.warning("FlightRadar24: %s failed - %s", task, message)
+        self._task_errors[task] = message
+
     async def _async_update_data(self) -> None:
         if not self.scanning:
             return
         self._sync_subentries()
-        try:
-            await asyncio.gather(
-                self.hass.async_add_executor_job(self.flight.update_flights_in_area),
-                self.hass.async_add_executor_job(self.flight.update_flights_tracked),
-                self.hass.async_add_executor_job(self.flight.update_most_tracked),
-                self.hass.async_add_executor_job(self.airport.update_airport_info),
-            )
-        except Exception as err:
-            raise UpdateFailed(f"FlightRadar24: {err}") from err
+
+        tasks = {
+            "flights in area": self.flight.update_flights_in_area,
+            "tracked flights": self.flight.update_flights_tracked,
+            "most tracked": self.flight.update_most_tracked,
+            "airport info": self.airport.update_airport_info,
+        }
+        # Each upstream endpoint sits behind a different host, and FR24 blocks
+        # them independently. Gather with return_exceptions so one dead endpoint
+        # degrades its own sensors instead of taking down the whole refresh.
+        results = await asyncio.gather(
+            *(self.hass.async_add_executor_job(fn) for fn in tasks.values()),
+            return_exceptions=True,
+        )
+
+        # return_exceptions=True also captures CancelledError, which is a
+        # BaseException rather than an Exception — swallowing it would keep a
+        # shutting-down refresh alive, so let it through untouched.
+        for result in results:
+            if isinstance(result, asyncio.CancelledError):
+                raise result
+
+        failures: list[BaseException] = []
+        for task, result in zip(tasks, results):
+            err = result if isinstance(result, BaseException) else None
+            if err is not None:
+                failures.append(err)
+            self._report(task, err)
+
+        if len(failures) == len(tasks):
+            # Nothing at all came back — genuinely a failed refresh.
+            raise UpdateFailed(f"FlightRadar24: {failures[0]}") from failures[0]
 
         def fire(event: Event) -> None:
             self.hass.bus.fire(event.event, event.data)

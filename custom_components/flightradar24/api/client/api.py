@@ -40,12 +40,21 @@ class FlightRadar24API:
             headers=Core.json_headers,
             data={"email": user, "password": password, "remember": "true", "type": "web"},
             timeout=self.timeout,
+            # Read FR24's own JSON rejection rather than letting raise_for_status
+            # turn it into an opaque transport failure. A Cloudflare challenge on
+            # these same codes is caught earlier, so this only widens the window
+            # for genuine credential errors.
+            exclude_status_codes=(401, 403),
         )
         content = response.get_content()
+        if not isinstance(content, dict):
+            raise LoginError("FlightRadar24 returned an unexpected login response.")
         if not str(response.get_status_code()).startswith("2") or not content.get("success"):
-            if isinstance(content, dict) and "message" in content:
-                raise LoginError(content["message"])
-            raise LoginError("Your email or password is incorrect")
+            # FR24 reports the reason in "msg"; "message" is kept as a fallback.
+            message = content.get("msg") or content.get("message")
+            raise LoginError(message or "Your email or password is incorrect")
+        if "userData" not in content:
+            raise LoginError("FlightRadar24 accepted the login but returned no account data.")
 
         self._login_data = {
             "userData": content["userData"],
@@ -65,6 +74,17 @@ class FlightRadar24API:
     def is_logged_in(self) -> bool:
         return self._login_data is not None
 
+    def _premium_token(self) -> str | None:
+        """Session token unlocking premium fields, or None when absent.
+
+        FR24 has changed this cookie's name before; a missing cookie only
+        costs the extra fields, so it must not break an otherwise fine
+        request.
+        """
+        if self._login_data is None:
+            return None
+        return self._login_data["cookies"].get("_frPl")
+
     def get_login_data(self) -> dict[str, Any]:
         if not self.is_logged_in():
             raise LoginError("You must log in to your account.")
@@ -78,8 +98,8 @@ class FlightRadar24API:
             aircraft_type: str | None = None,
     ) -> list[Flight]:
         params: dict[str, Any] = dataclasses.asdict(self._tracker_config)
-        if self._login_data is not None:
-            params["enc"] = self._login_data["cookies"]["_frPl"]
+        if (token := self._premium_token()) is not None:
+            params["enc"] = token
         if airline:
             params["airline"] = airline
         if bounds:
@@ -116,8 +136,8 @@ class FlightRadar24API:
             raise ValueError(f"The code '{code}' is invalid. It must be the IATA or ICAO of the airport.")
 
         params: dict[str, Any] = {"format": "json", "code": code, "limit": flight_limit, "page": page}
-        if self._login_data is not None:
-            params["token"] = self._login_data["cookies"]["_frPl"]
+        if (token := self._premium_token()) is not None:
+            params["token"] = token
 
         response = APIRequest(
             Core.api_airport_data_url,

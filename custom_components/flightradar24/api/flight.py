@@ -84,7 +84,7 @@ _FLIGHT_FIELDS: tuple[tuple[str, tuple[str | int, ...]], ...] = (
 
 class FlightProcessor:
     __slots__ = ('_in_area', '_tracked', '_most_tracked', '_entered', '_exited', '_min_altitude', '_max_altitude',
-                 '_point', '_client', '_bounds', '_event_manager')
+                 '_point', '_client', '_bounds', '_event_manager', '_empty_reads')
 
     def __init__(
             self,
@@ -106,6 +106,7 @@ class FlightProcessor:
         self._most_tracked: dict[str, dict[str, Any]] | None = None
         self._entered: list[dict[str, Any]] = []
         self._exited: list[dict[str, Any]] = []
+        self._empty_reads: int = 0
 
     @property
     def tracked(self) -> dict[str, dict[str, Any]]:
@@ -235,14 +236,27 @@ class FlightProcessor:
         return None
 
     def update_flights_in_area(self) -> None:
-        self._entered = {}
-        self._exited = {}
+        self._entered = []
+        self._exited = []
         flights = self._client.get_flights(bounds=self._bounds)
         current: dict[str, dict[str, Any]] = {}
         for obj in flights:
             if not self._min_altitude <= obj.altitude <= self._max_altitude:
                 continue
             self._update_flights_data(obj, current, self._in_area, FlightType.IN_AREA)
+
+        # FR24's feed intermittently answers with a stub payload carrying no
+        # aircraft at all. Taken at face value that reads as "every flight left
+        # the area at once", firing a burst of bogus exit events and dropping
+        # the in-area count to zero, then re-firing entry events on the next
+        # tick. Ignore the first such read and only believe an emptied area
+        # once it repeats.
+        if not current and self._in_area:
+            self._empty_reads += 1
+            if self._empty_reads < 2:
+                return
+        else:
+            self._empty_reads = 0
 
         if self._in_area is not None:
             entries = current.keys() - self._in_area.keys()

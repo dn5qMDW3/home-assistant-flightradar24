@@ -26,7 +26,8 @@
     },
     "error": {
       "credentials_required": "Both username and password are required.",
-      "login_failed": "Login to Flightradar24 failed. Check your credentials."
+      "login_failed": "Login to Flightradar24 failed. Check your credentials.",
+      "login_unavailable": "Could not reach Flightradar24 to verify the credentials. It may be temporarily blocking Home Assistant — try again later."
     }
   },
   "options": {
@@ -48,7 +49,8 @@
     },
     "error": {
       "credentials_required": "Both username and password are required when either is provided.",
-      "login_failed": "Login to Flightradar24 failed. Check your credentials."
+      "login_failed": "Login to Flightradar24 failed. Check your credentials.",
+      "login_unavailable": "Could not reach Flightradar24 to verify the credentials. It may be temporarily blocking Home Assistant — try again later."
     }
   },
   "config_subentries": {

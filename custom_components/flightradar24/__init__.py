@@ -11,8 +11,8 @@ from homeassistant.const import (
     Platform,
 )
 from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import ConfigEntryAuthFailed
-from .api.client import Entity, FlightRadar24API, LoginError
+from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
+from .api.client import Entity, FlightRadar24API, FlightRadar24Error, LoginError
 from .const import (
     CONF_MAX_ALTITUDE,
     CONF_MIN_ALTITUDE,
@@ -48,7 +48,13 @@ async def _async_login(
     try:
         await hass.async_add_executor_job(client.login, username, password)
     except LoginError as err:
+        # FR24 read the credentials and rejected them: ask the user to fix them.
         raise ConfigEntryAuthFailed(f"FlightRadar24 login failed: {err}") from err
+    except FlightRadar24Error as err:
+        # Blocked, rate-limited or unreachable. The credentials may be perfectly
+        # fine, so retry on Home Assistant's backoff (which grows to 10 minutes)
+        # instead of dropping the user into a reauth prompt that cannot succeed.
+        raise ConfigEntryNotReady(f"FlightRadar24 login unavailable: {err}") from err
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: FlightRadar24ConfigEntry) -> bool:
